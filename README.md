@@ -1,56 +1,90 @@
-# Welcome to your Expo app 👋
+# Panduan Onboarding & Pengembangan Tim - Mobile App PPK
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Dokumentasi ini dibagi menjadi **3 bagian utama**: Prerequisite, Install Aplikasi di Web Expo (Khusus Tim), dan Menjalankan Repo di Komputer Lokal.
 
-## Get started
+---
 
-1. Install dependencies
+## 📌 Bagian 1: Prerequisite (Prasyarat)
 
-   ```bash
-   npm install
-   ```
+Sebelum memulai, pastikan Anda telah menyiapkan hal-hal berikut:
 
-2. Start the app
+1. **Akun Expo:**
+   - Daftarkan akun di [expo.dev/signup](https://expo.dev/signup).
+   - Pastikan Anda sudah **diundang oleh Owner** ke organisasi **`rio2233s-team`** (cek email undangan atau notifikasi di dashboard Expo Anda).
+2. **Lingkungan Komputer:**
+   - **Node.js** (Versi LTS: v20 atau v22+)
+   - **Git**
+   - **npm** (Bawaan Node.js)
+   - **EAS CLI** (Opsional/Direkomendasikan):
+     ```bash
+     npm install -g eas-cli
+     ```
+3. **Perangkat Uji:**
+   - HP Android fisik (disarankan) atau Android Emulator di laptop.
 
-   ```bash
-   npx expo start
-   ```
+---
 
-In the output, you'll find options to open the app in a
+## 📲 Bagian 2: Install Aplikasi di Web Expo (Khusus Tim)
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+> *Hanya akun yang telah diundang sebagai anggota organisasi `rio2233s-team` yang memiliki izin untuk melihat dan mengunduh build ini.*
 
-You can start developing by editing the files inside the **src/app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+1. **Buka Web Expo & Login:**  
+   Buka browser di HP Android Anda (atau di laptop) dan login ke [expo.dev/login](https://expo.dev/login) menggunakan akun Expo Anda masing-masing.
+2. **Buka Proyek Tim:**  
+   - Di pojok kiri atas dashboard Expo, pilih organisasi **`rio2233s-team`**.
+   - Klik proyek **`mobile-app-ppk`**.
+3. **Masuk ke Menu Builds & Unduh APK:**  
+   - Di menu sebelah kiri, klik menu **Builds**.
+   - Pilih build Android terbaru dengan status **Development Client** yang bertanda centang hijau (✔ Selesai).
+   - Klik tombol **Download** atau scan QR code dari HP Android Anda untuk memasang (install) file APK di HP.
 
-## Get a fresh project
+---
 
-When you're ready, run:
+## 💻 Bagian 3: Jalankan Repo
 
+Setelah aplikasi terpasang di HP Anda, ikuti langkah berikut untuk mulai menjalankan project di komputer lokal:
+
+### 1. Clone Repo
 ```bash
-npm run reset-project
+git clone <URL_REPOSITORY_GIT>
+cd mobile-app-ppk
 ```
 
-This command will move the starter code to the **example** directory and create a blank **src/app** directory where you can start developing.
+### 2. Install Dependensi
+```bash
+npm install
+```
 
-### Other setup steps
+### 3. Jalankan Aplikasi
+Jalankan development server Expo:
+```bash
+npx expo start
+```
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+### 4. Hubungkan Aplikasi di HP (Scan QR)
+1. Pastikan **laptop dan HP Android Anda terhubung ke jaringan Wi-Fi yang sama**.
+2. Buka aplikasi **mobile-app-ppk** yang sudah Anda install pada **Bagian 2**.
+3. Gunakan fitur pemindai di dalam aplikasi untuk **scan QR code** yang muncul di terminal laptop.
+4. Project akan terhubung dan siap untuk dikembangkan!
 
-## Learn more
+---
 
-To learn more about developing your project with Expo, look at the following resources:
+## ☁️ Catatan Tambahan: Menjalankan EAS Build Mandiri (Untuk Tim)
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+Jika tim Anda menambahkan *native library* baru atau ingin membuat build mandiri, anggota tim dapat menjalankan build sendiri melalui terminal:
 
-## Join the community
+1. **Login EAS di terminal laptop:**
+   ```bash
+   eas login
+   ```
+2. **Jalankan Build:**
+   * **Development Client baru:**  
+     `eas build --platform android --profile development`
+   * **APK Preview Standalone (bisa jalan tanpa server laptop):**  
+     `eas build --platform android --profile preview`
 
-Join our community of developers creating universal apps.
+---
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## 🛠️ Aturan Pengembangan Tim
+- **Tambah library:** Wajib gunakan `npx expo install <nama-paket>` (agar versinya kompatibel dengan Expo SDK 58).
+- **Sebelum Pull Request:** Selalu jalankan `npm run lint` dan `npx tsc --noEmit`.
