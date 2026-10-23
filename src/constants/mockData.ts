@@ -27,7 +27,6 @@ export interface AttendanceRecord {
   namaPraktikan: string;
   nim: string;
   waktuHadir: string;
-  keterangan?: string;
 }
 
 export const MOCK_USERS: User[] = [
@@ -77,6 +76,5 @@ export const MOCK_ATTENDANCES: AttendanceRecord[] = [
     namaPraktikan: 'Siti Aminah',
     nim: '220101011',
     waktuHadir: '10:04:12 WIB',
-    keterangan: 'Hadir di Meja 04',
   },
 ];
