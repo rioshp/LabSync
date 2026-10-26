@@ -29,7 +29,13 @@ export default function ScheduleScreen() {
 
   return (
     <View style={styles.screen}>
-      <Stack.Screen options={{ headerShown: false }} />
+      <Stack.Screen
+        options={{
+          headerShown: false,
+          animation: 'slide_from_right',
+          contentStyle: { backgroundColor: BrandColors.paper },
+        }}
+      />
       <View
         pointerEvents="none"
         accessible={false}
@@ -43,7 +49,7 @@ export default function ScheduleScreen() {
         <View style={styles.backgroundMiddle} />
         <View style={styles.backgroundTopStep} />
         <View style={styles.backgroundTopTile} />
-        <View style={styles.backgroundLeftTile} />
+        <View style={styles.backgroundRightTile} />
         <View style={styles.backgroundBottomStep} />
         <View style={styles.backgroundBottomTile} />
       </View>
@@ -202,7 +208,7 @@ const styles = StyleSheet.create({
   backgroundTop: {
     position: 'absolute',
     top: 0,
-    right: 0,
+    left: 0,
     width: 112,
     height: 168,
     backgroundColor: BrandColors.sageLight,
@@ -211,7 +217,7 @@ const styles = StyleSheet.create({
   backgroundSide: {
     position: 'absolute',
     top: 176,
-    right: 0,
+    left: 0,
     width: 48,
     height: 48,
     backgroundColor: BrandColors.forestSoft,
@@ -220,7 +226,7 @@ const styles = StyleSheet.create({
   backgroundBottom: {
     position: 'absolute',
     bottom: 0,
-    left: 0,
+    right: 0,
     width: 112,
     height: 168,
     backgroundColor: BrandColors.sageLight,
@@ -229,7 +235,7 @@ const styles = StyleSheet.create({
   backgroundCorner: {
     position: 'absolute',
     bottom: 176,
-    left: 0,
+    right: 0,
     width: 48,
     height: 48,
     backgroundColor: BrandColors.forestSoft,
@@ -238,7 +244,7 @@ const styles = StyleSheet.create({
   backgroundMiddle: {
     position: 'absolute',
     top: '48%',
-    right: 0,
+    left: 0,
     width: 48,
     height: 104,
     backgroundColor: BrandColors.sageLight,
@@ -247,7 +253,7 @@ const styles = StyleSheet.create({
   backgroundTopStep: {
     position: 'absolute',
     top: 0,
-    right: 120,
+    left: 120,
     width: 48,
     height: 48,
     backgroundColor: BrandColors.forest,
@@ -256,16 +262,16 @@ const styles = StyleSheet.create({
   backgroundTopTile: {
     position: 'absolute',
     top: 56,
-    right: 120,
+    left: 120,
     width: 48,
     height: 48,
     backgroundColor: BrandColors.softGreen,
     opacity: 0.85,
   },
-  backgroundLeftTile: {
+  backgroundRightTile: {
     position: 'absolute',
     top: '47%',
-    left: 0,
+    right: 0,
     width: 32,
     height: 48,
     backgroundColor: BrandColors.sage,
@@ -274,7 +280,7 @@ const styles = StyleSheet.create({
   backgroundBottomStep: {
     position: 'absolute',
     bottom: 0,
-    left: 120,
+    right: 120,
     width: 48,
     height: 48,
     backgroundColor: BrandColors.forest,
@@ -283,7 +289,7 @@ const styles = StyleSheet.create({
   backgroundBottomTile: {
     position: 'absolute',
     bottom: 56,
-    left: 120,
+    right: 120,
     width: 48,
     height: 48,
     backgroundColor: BrandColors.softGreen,
@@ -319,6 +325,7 @@ const styles = StyleSheet.create({
   },
   backIcon: {
     paddingLeft: 4,
+    backgroundColor: BrandColors.forest,
   },
   chevron: {
     width: 8,
@@ -330,6 +337,7 @@ const styles = StyleSheet.create({
   },
   chevronBack: {
     transform: [{ rotate: '-135deg' }],
+    borderColor: BrandColors.paper,
   },
   forwardIcon: {
     paddingRight: 4,
