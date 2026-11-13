@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "151530671148",
+    "project_id": "ppk-praktikum-2026-b0df4",
+    "storage_bucket": "ppk-praktikum-2026-b0df4.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:151530671148:android:65f9d52d232a59968cd589",
+        "android_client_info": {
+          "package_name": "com.rio2233steam.mobileappppk"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDEvYpApQuS8cpYVRqSP1_7YsqX0wNicoA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
