@@ -27,7 +27,7 @@ export default function LoginScreen() {
     }
   }
 
-  if (!submitting && !loading && user && profile) return <Redirect href="/home" />;
+  if (!submitting && !loading && user && profile) return <Redirect href="/jadwal" />;
   if (!submitting && (loading || user)) return <AuthSessionStatus />;
 
   return (

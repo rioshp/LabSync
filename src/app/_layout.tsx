@@ -17,11 +17,14 @@ function RootNavigator() {
       </Stack.Protected>
       <Stack.Protected guard={signedIn}>
         <Stack.Screen name="(app)" />
-        <Stack.Screen name="jadwal" />
-        <Stack.Screen name="asisten-sesi" />
-        <Stack.Screen name="praktikan-presensi" />
-        <Stack.Screen name="rekap-asisten" />
-        <Stack.Screen name="riwayat-praktikan" />
+        <Stack.Protected guard={profile?.role === 'asisten'}>
+          <Stack.Screen name="asisten-sesi" />
+          <Stack.Screen name="rekap-asisten" />
+        </Stack.Protected>
+        <Stack.Protected guard={profile?.role === 'praktikan'}>
+          <Stack.Screen name="praktikan-presensi" />
+          <Stack.Screen name="riwayat-praktikan" />
+        </Stack.Protected>
       </Stack.Protected>
     </Stack>
   );

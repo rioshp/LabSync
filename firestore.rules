@@ -2,6 +2,11 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    function hasRole(role) {
+      return request.auth != null
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
+    }
+
     match /users/{uid} {
       function isOwner() {
         return request.auth != null && request.auth.uid == uid;
@@ -23,6 +28,19 @@ service cloud.firestore {
       allow get: if isOwner();
       allow create: if isOwner() && validProfile();
       allow list, update, delete: if false;
+    }
+
+    match /classes/{classId} {
+      allow read: if (hasRole('asisten') && resource.data.assistantId == request.auth.uid)
+        || (hasRole('praktikan') && request.auth.uid in resource.data.get('studentIds', []));
+      allow write: if false;
+    }
+
+    match /sessions/{sessionId} {
+      allow read: if (hasRole('asisten') && resource.data.assistantId == request.auth.uid)
+        || (hasRole('praktikan')
+          && request.auth.uid in get(/databases/$(database)/documents/classes/$(resource.data.classId)).data.get('studentIds', []));
+      allow write: if false;
     }
 
     match /{document=**} {

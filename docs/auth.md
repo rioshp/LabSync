@@ -2,17 +2,16 @@
 
 ## Batas perubahan Nandra
 
-Tahap ini mencakup Firebase bersama, `useAuth`, login/register, validasi profil,
-auth guard, beranda akun, dan logout. Komponen auth, tipe profil, dokumentasi,
-serta tes mendukung bagian tersebut. `home.tsx` menjalankan peran dashboard yang
-disebut pada rencana; nama rutenya dibedakan dari login untuk menghindari benturan URL.
+Bagian Nandra mencakup Firebase bersama, `useAuth`, login/register, validasi profil,
+auth guard, tab sesuai role, logout di header, dan jadwal realtime. Komponen,
+tipe data, dokumentasi, dan tes mendukung bagian tersebut.
 
-Rules yang disiapkan hanya mengatur profil `users/{uid}` agar register/login
-dapat digunakan. Penanggung jawab Rules seluruh aplikasi belum ditetapkan pada
-pembagian sprint; perlu koordinasi sebelum memperluasnya ke koleksi anggota lain.
+Rules mencakup profil `users/{uid}` serta baca kelas/sesi sesuai role dan
+keanggotaan. Operasi tulis fitur lain tetap memerlukan aturan dari pemilik fitur.
 Panel asisten/praktikan, CRUD kelas/sesi, presensi, rekap, izin, AI, ulasan, dan
-riwayat tidak diubah. Konstanta tema bersama juga tetap dipertahankan.
-Tab sesuai role dan jadwal realtime masih menjadi pekerjaan Nandra berikutnya.
+riwayat tidak diimplementasikan di sini. Rute penghubung disediakan sesuai
+kesepakatan; kode layar lama anggota lain tidak diubah. Konstanta tema bersama tetap sama.
+Lihat [kontrak jadwal dan integrasi](schedule.md).
 
 ## Modul bersama
 
@@ -32,6 +31,10 @@ Tab sesuai role dan jadwal realtime masih menjadi pekerjaan Nandra berikutnya.
 | `src/types/user.ts` | Tipe `Role` dan `UserProfile`, tanpa kode runtime |
 | `src/components/auth-screen.tsx` | Tampilan bersama, background, dan animasi tema lama |
 | `src/components/auth-session-status.tsx` | Tampilan loading dan pemulihan akun/profil |
+| `src/hooks/useSchedule.ts` | State loading/error/retry jadwal dan pembersihan listener |
+| `src/lib/schedule.ts` | Query realtime kelas/sesi dan parser data jadwal |
+| `src/types/session.ts` | Kontrak sesi Firestore |
+| `src/components/logout-button.tsx` | Tombol keluar pada header tab |
 
 File helper mendukung implementasi Nandra; tidak menggantikan halaman atau
 fitur milik anggota lain. Validator form hanya dipakai internal oleh operasi akun.
@@ -62,8 +65,8 @@ ID dokumen **harus sama** dengan Firebase Auth UID. Jangan membuat ID acak.
 Password dan email dikelola Firebase Auth. Password tidak disimpan di Firestore.
 Email tersedia melalui `user.email`. Untuk field pemilik data Sprint 2
 (`assistantId`, `studentId`), gunakan **UID**, bukan NIM atau ID mock Sprint 1.
-Profil belum memasukkan keanggotaan kelas; hubungan peserta–kelas perlu disepakati
-bersama pemilik fitur kelas sebelum jadwal realtime dibuat.
+Keanggotaan kelas disimpan pada `classes.studentIds`, bukan pada profil akun.
+Array tersebut berisi UID praktikan, bukan NIM. Lihat `docs/schedule.md`.
 
 Jika penyimpanan profil gagal setelah akun dibuat, register mencoba menghapus
 akun baru agar email bisa digunakan untuk mencoba lagi. Jika penghapusan juga
@@ -77,13 +80,14 @@ tidak mengizinkan register menyimpan profil. Untuk tahap akun ini:
 
 1. Buka Firestore Database → Rules pada proyek tim yang benar.
 2. Tinjau lalu salin isi `firestore.rules` dan Publish.
-3. Rules ini mengizinkan pengguna membaca dan membuat **profilnya sendiri**;
-   list profil, perubahan/penghapusan profil, dan koleksi lain tetap ditolak.
+3. Rules mengizinkan pengguna membaca dan membuat **profilnya sendiri**,
+   serta membaca kelas/sesi yang sesuai. List profil, perubahan/penghapusan
+   profil, dan operasi tulis koleksi praktikum tetap ditolak.
 
 Pemilihan kedua role saat register mengikuti pembagian sprint. Artinya, pada
 tahap demo ini pengguna dapat mendaftar sebagai asisten. Jika tim nantinya
 membatasi pendaftaran asisten, alur register dan Rules harus diubah bersama.
-Rules fitur kelas/sesi/presensi/izin/ulasan belum termasuk tahap ini.
+Rules CRUD kelas/sesi, presensi, izin, dan ulasan menjadi bagian integrasi pemilik fitur tersebut.
 
 File Rules belum otomatis diterapkan ke proyek cloud. Jika sudah ada Rules
 tambahan dari anggota lain, gabungkan aturan `users` tanpa menghapus aturan mereka.
@@ -100,25 +104,27 @@ jangan membuka seluruh database untuk mengatasi masalah ini.
 
 ## Alur dan pengujian
 
-`/` (login) → `/register` → buat akun/profil → `/home` (beranda akun).
-Beranda berada di `src/app/(app)/home.tsx` agar URL-nya berbeda dari login `/`.
+`/` (login) → `/register` → buat akun/profil → `/jadwal` (tab utama).
+Jadwal berada di `src/app/(app)/jadwal.tsx`. `/home` tetap menjadi alias ke
+`/jadwal` agar URL dari versi sebelumnya tidak berubah menjadi unmatched route.
 Rute `/` selalu tersedia sebagai pintu masuk: menampilkan login ketika belum
-masuk, atau mengarahkan ke `/home` ketika akun dan profil sudah siap.
+masuk, atau mengarahkan ke `/jadwal` ketika akun dan profil sudah siap.
 Root layout melindungi register untuk pengguna yang belum masuk dan halaman
 privat untuk akun dengan profil valid. Logout kembali ke `/` yang tetap terdaftar,
 sehingga URL awal tidak berubah menjadi halaman unmatched route.
-Beranda menyediakan nama, peran, NIM praktikan, dan logout. Halaman jadwal dan
-panel Sprint 1 tetap memakai mock dan belum dihubungkan ke beranda ini.
-Tab berdasarkan role dan jadwal realtime merupakan pekerjaan berikutnya.
+Jadwal menampilkan nama/peran dan NIM praktikan dari profil Firebase. Logout
+tersedia di header. Tab asisten adalah Jadwal/Daftar Izin; tab praktikan adalah
+Jadwal Saya/Riwayat Saya. Rute tujuan fitur anggota lain masih berupa penghubung
+sampai implementasi mereka diintegrasikan.
 
 Jalankan `npx expo start --dev-client` menggunakan development APK yang sudah
 memuat Firebase App, Auth, dan Firestore. Perubahan ini tidak menambah paket native.
 
 Uji di HP setelah Rules diterapkan:
 
-1. Register praktikan; cek dokumen `users/{uid}` dan NIM di beranda.
+1. Register praktikan; cek dokumen `users/{uid}` dan NIM di jadwal.
 2. Logout, login kembali, lalu tutup/buka aplikasi; identitas tetap sesuai akun.
-3. Register asisten; profil tidak memiliki field NIM dan beranda menampilkan peran asisten.
+3. Register asisten; profil tidak memiliki field NIM dan tab sesuai peran asisten.
 4. Coba field kosong, email tidak valid, password pendek, konfirmasi berbeda,
    email terdaftar, serta kredensial salah; pesan harus jelas dan tombol bisa dipakai lagi.
 5. Putuskan internet saat login atau tolak Rules profil; aplikasi menampilkan
