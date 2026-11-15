@@ -1,0 +1,32 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{uid} {
+      function isOwner() {
+        return request.auth != null && request.auth.uid == uid;
+      }
+
+      function validProfile() {
+        let data = request.resource.data;
+        return data.keys().hasAll(['name', 'role', 'createdAt'])
+          && data.keys().hasOnly(['name', 'nim', 'role', 'createdAt'])
+          && data.name is string && data.name.size() > 0 && data.name.size() <= 100
+          && data.createdAt == request.time
+          && (
+            (data.role == 'asisten' && !('nim' in data))
+            || (data.role == 'praktikan' && data.nim is string
+              && data.nim.size() > 0 && data.nim.size() <= 30)
+          );
+      }
+
+      allow get: if isOwner();
+      allow create: if isOwner() && validProfile();
+      allow list, update, delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
