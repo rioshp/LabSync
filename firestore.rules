@@ -4,7 +4,34 @@ service cloud.firestore {
   match /databases/{database}/documents {
     function hasRole(role) {
       return request.auth != null
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
+    }
+
+    function isStudentInSession(sessionId) {
+      let sessionPath = /databases/$(database)/documents/sessions/$(sessionId);
+      return hasRole('praktikan')
+        && exists(sessionPath)
+        && exists(/databases/$(database)/documents/classes/$(get(sessionPath).data.classId))
+        && request.auth.uid in get(
+          /databases/$(database)/documents/classes/$(get(sessionPath).data.classId)
+        ).data.get('studentIds', []);
+    }
+
+    function sessionHasStatus(sessionId, expectedStatus) {
+      let sessionPath = /databases/$(database)/documents/sessions/$(sessionId);
+      return exists(sessionPath)
+        && get(sessionPath).data.status == expectedStatus;
+    }
+
+    function matchesStudentProfile(data) {
+      return hasRole('praktikan')
+        && data.studentName == get(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        ).data.name
+        && data.nim == get(
+          /databases/$(database)/documents/users/$(request.auth.uid)
+        ).data.nim;
     }
 
     match /users/{uid} {
@@ -38,8 +65,7 @@ service cloud.firestore {
 
     match /sessions/{sessionId} {
       allow read: if (hasRole('asisten') && resource.data.assistantId == request.auth.uid)
-        || (hasRole('praktikan')
-          && request.auth.uid in get(/databases/$(database)/documents/classes/$(resource.data.classId)).data.get('studentIds', []));
+        || isStudentInSession(sessionId);
       allow write: if false;
     }
 
@@ -48,8 +74,64 @@ service cloud.firestore {
         return hasRole('asisten')
           && (
             resource.data.get('assistantId', '') == request.auth.uid
-            || get(/databases/$(database)/documents/sessions/$(resource.data.sessionId)).data.assistantId == request.auth.uid
+            || (
+              exists(/databases/$(database)/documents/sessions/$(resource.data.sessionId))
+              && get(
+                /databases/$(database)/documents/sessions/$(resource.data.sessionId)
+              ).data.assistantId == request.auth.uid
+            )
           );
+      }
+
+      function isPermitStudent() {
+        return hasRole('praktikan')
+          && resource.data.studentId == request.auth.uid;
+      }
+
+      function isOwnMissingPermitPath() {
+        return hasRole('praktikan')
+          && permitId.matches('^.+_' + request.auth.uid + '$')
+          && !exists(/databases/$(database)/documents/permits/$(permitId));
+      }
+
+      function validPermitCreate() {
+        let data = request.resource.data;
+        return hasRole('praktikan')
+          && data.keys().hasAll([
+            'sessionId', 'sessionInfo', 'assistantId', 'studentId',
+            'studentName', 'nim', 'reason', 'aiClassification', 'aiNote',
+            'status', 'reviewedBy', 'reviewNote', 'submittedAt'
+          ])
+          && data.keys().hasOnly([
+            'sessionId', 'sessionInfo', 'assistantId', 'studentId',
+            'studentName', 'nim', 'reason', 'aiClassification', 'aiNote',
+            'status', 'reviewedBy', 'reviewNote', 'submittedAt'
+          ])
+          && data.sessionId is string
+          && data.sessionId.size() > 0
+          && permitId == data.sessionId + '_' + request.auth.uid
+          && isStudentInSession(data.sessionId)
+          && data.assistantId == get(
+            /databases/$(database)/documents/sessions/$(data.sessionId)
+          ).data.assistantId
+          && data.studentId == request.auth.uid
+          && matchesStudentProfile(data)
+          && data.reason is string
+          && data.reason.size() >= 20
+          && data.reason.size() <= 1000
+          && data.sessionInfo is map
+          && data.sessionInfo.keys().hasAll(['practicum', 'module', 'date'])
+          && data.sessionInfo.keys().hasOnly(['practicum', 'module', 'date'])
+          && data.sessionInfo.practicum is string
+          && data.sessionInfo.module is string
+          && data.sessionInfo.date is string
+          && data.aiClassification in ['valid', 'perlu_ditinjau', 'tidak_valid']
+          && data.aiNote is string
+          && data.aiNote.size() <= 1000
+          && data.status == 'pending'
+          && data.reviewedBy == null
+          && data.reviewNote == null
+          && data.submittedAt == request.time;
       }
 
       function validPermitReview() {
@@ -74,17 +156,115 @@ service cloud.firestore {
           );
       }
 
-      allow read: if isPermitAssistant()
-        || (hasRole('praktikan') && resource.data.studentId == request.auth.uid);
+      allow get: if isOwnMissingPermitPath()
+        || isPermitAssistant()
+        || isPermitStudent();
+      allow list: if isPermitAssistant() || isPermitStudent();
+      allow create: if validPermitCreate();
       allow update: if isPermitAssistant() && validPermitReview();
-      allow create, delete: if false;
+      allow delete: if false;
     }
 
     match /attendances/{attendanceId} {
-      allow read: if (hasRole('praktikan') && resource.data.studentId == request.auth.uid)
-        || (hasRole('asisten')
-          && get(/databases/$(database)/documents/sessions/$(resource.data.sessionId)).data.assistantId == request.auth.uid);
-      allow write: if false;
+      function isAttendanceAssistant() {
+        return hasRole('asisten')
+          && exists(/databases/$(database)/documents/sessions/$(resource.data.sessionId))
+          && get(
+            /databases/$(database)/documents/sessions/$(resource.data.sessionId)
+          ).data.assistantId == request.auth.uid;
+      }
+
+      function isAttendanceStudent() {
+        return hasRole('praktikan')
+          && resource.data.studentId == request.auth.uid;
+      }
+
+      function isOwnMissingAttendancePath() {
+        return hasRole('praktikan')
+          && attendanceId.matches('^.+_' + request.auth.uid + '$')
+          && !exists(/databases/$(database)/documents/attendances/$(attendanceId));
+      }
+
+      function validAttendanceCreate() {
+        let data = request.resource.data;
+        return hasRole('praktikan')
+          && data.keys().hasAll([
+            'sessionId', 'studentId', 'studentName', 'nim', 'checkedInAt'
+          ])
+          && data.keys().hasOnly([
+            'sessionId', 'studentId', 'studentName', 'nim', 'checkedInAt'
+          ])
+          && data.sessionId is string
+          && data.sessionId.size() > 0
+          && attendanceId == data.sessionId + '_' + request.auth.uid
+          && isStudentInSession(data.sessionId)
+          && sessionHasStatus(data.sessionId, 'open')
+          && data.studentId == request.auth.uid
+          && matchesStudentProfile(data)
+          && data.checkedInAt == request.time;
+      }
+
+      allow get: if isOwnMissingAttendancePath()
+        || isAttendanceAssistant()
+        || isAttendanceStudent();
+      allow list: if isAttendanceAssistant() || isAttendanceStudent();
+      allow create: if validAttendanceCreate();
+      allow update, delete: if false;
+    }
+
+    match /reviews/{reviewId} {
+      function isReviewAssistant() {
+        return hasRole('asisten')
+          && exists(/databases/$(database)/documents/sessions/$(resource.data.sessionId))
+          && get(
+            /databases/$(database)/documents/sessions/$(resource.data.sessionId)
+          ).data.assistantId == request.auth.uid;
+      }
+
+      function isReviewStudent() {
+        return hasRole('praktikan')
+          && resource.data.studentId == request.auth.uid;
+      }
+
+      function isOwnMissingReviewPath() {
+        return hasRole('praktikan')
+          && reviewId.matches('^.+_' + request.auth.uid + '$')
+          && !exists(/databases/$(database)/documents/reviews/$(reviewId));
+      }
+
+      function validReviewCreate() {
+        let data = request.resource.data;
+        return hasRole('praktikan')
+          && data.keys().hasAll([
+            'sessionId', 'studentId', 'studentName', 'rating', 'comment', 'createdAt'
+          ])
+          && data.keys().hasOnly([
+            'sessionId', 'studentId', 'studentName', 'rating', 'comment', 'createdAt'
+          ])
+          && data.sessionId is string
+          && data.sessionId.size() > 0
+          && reviewId == data.sessionId + '_' + request.auth.uid
+          && isStudentInSession(data.sessionId)
+          && sessionHasStatus(data.sessionId, 'closed')
+          && exists(
+            /databases/$(database)/documents/attendances/$(data.sessionId + '_' + request.auth.uid)
+          )
+          && data.studentId == request.auth.uid
+          && matchesStudentProfile(data)
+          && data.rating is int
+          && data.rating >= 1
+          && data.rating <= 5
+          && data.comment is string
+          && data.comment.size() <= 1000
+          && data.createdAt == request.time;
+      }
+
+      allow get: if isOwnMissingReviewPath()
+        || isReviewAssistant()
+        || isReviewStudent();
+      allow list: if isReviewAssistant() || isReviewStudent();
+      allow create: if validReviewCreate();
+      allow update, delete: if false;
     }
 
     match /{document=**} {
