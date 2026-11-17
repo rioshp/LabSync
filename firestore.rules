@@ -43,6 +43,50 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    match /permits/{permitId} {
+      function isPermitAssistant() {
+        return hasRole('asisten')
+          && (
+            resource.data.get('assistantId', '') == request.auth.uid
+            || get(/databases/$(database)/documents/sessions/$(resource.data.sessionId)).data.assistantId == request.auth.uid
+          );
+      }
+
+      function validPermitReview() {
+        let data = request.resource.data;
+        return resource.data.status == 'pending'
+          && data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedBy', 'reviewNote'])
+          && data.reviewedBy == request.auth.uid
+          && (
+            (
+              data.status == 'approved'
+              && (
+                data.reviewNote == null
+                || (data.reviewNote is string && data.reviewNote.size() <= 500)
+              )
+            )
+            || (
+              data.status == 'rejected'
+              && data.reviewNote is string
+              && data.reviewNote.size() > 0
+              && data.reviewNote.size() <= 500
+            )
+          );
+      }
+
+      allow read: if isPermitAssistant()
+        || (hasRole('praktikan') && resource.data.studentId == request.auth.uid);
+      allow update: if isPermitAssistant() && validPermitReview();
+      allow create, delete: if false;
+    }
+
+    match /attendances/{attendanceId} {
+      allow read: if (hasRole('praktikan') && resource.data.studentId == request.auth.uid)
+        || (hasRole('asisten')
+          && get(/databases/$(database)/documents/sessions/$(resource.data.sessionId)).data.assistantId == request.auth.uid);
+      allow write: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
