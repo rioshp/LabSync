@@ -80,6 +80,13 @@ service cloud.firestore {
       allow create, delete: if false;
     }
 
+    match /attendances/{attendanceId} {
+      allow read: if (hasRole('praktikan') && resource.data.studentId == request.auth.uid)
+        || (hasRole('asisten')
+          && get(/databases/$(database)/documents/sessions/$(resource.data.sessionId)).data.assistantId == request.auth.uid);
+      allow write: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
