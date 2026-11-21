@@ -39,6 +39,7 @@ function setup(overrides = {}) {
     user,
     authInstance,
     api: loadTypeScript('src/lib/auth.ts', {
+      './firebase-error': loadTypeScript('src/lib/firebase-error.ts'),
       './firebase': { auth: authInstance },
       '@react-native-firebase/auth': auth,
       'react-native': { Platform: { OS: 'android' } },

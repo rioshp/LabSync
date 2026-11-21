@@ -6,17 +6,16 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { AccountSetup } from '@/components/account-setup';
 import { AuthButton, AuthError, AuthField, AuthScreen, authStyles } from '@/components/auth-screen';
 import { AuthSessionStatus } from '@/components/auth-session-status';
-import { DemoAccountPicker } from '@/components/demo-account-picker';
 import { BrandColors } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
 import {
-  authCode,
   getAuthErrorMessage,
   getGoogleCredential,
   login,
   loginWithGoogle,
   resetPassword,
 } from '@/lib/auth';
+import { firebaseErrorCode } from '@/lib/firebase-error';
 
 export default function LoginScreen() {
   const { user, phase, error: sessionError } = useAuth();
@@ -55,7 +54,7 @@ export default function LoginScreen() {
         try {
           await loginWithGoogle(google.credential);
         } catch (error) {
-          if (authCode(error) !== 'account-exists-with-different-credential') throw error;
+          if (firebaseErrorCode(error) !== 'account-exists-with-different-credential') throw error;
           pendingGoogle.current = google;
           setEmail(google.email);
           setNotice(
@@ -81,22 +80,8 @@ export default function LoginScreen() {
     <AuthScreen
       key={mode}
       intro={!resetting}
-      title={resetting ? 'Atur ulang password.' : 'Halo,\nselamat datang.'}
+      title={resetting ? 'Atur ulang password.' : 'Selamat datang'}
       description={resetting ? 'Masukkan email akun praktikum kamu.' : undefined}
-      headerAction={
-        !resetting && (
-          <DemoAccountPicker
-            disabled={!!busy}
-            onSelect={(account) => {
-              pendingGoogle.current = null;
-              setEmail(account.email);
-              setPassword(account.password);
-              setError(null);
-              setNotice('');
-            }}
-          />
-        )
-      }
     >
       <View style={authStyles.form}>
         <AuthField

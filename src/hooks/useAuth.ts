@@ -58,6 +58,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             if (!active) return;
             stopProfile();
             clearTimeout(timer);
+            // Abaikan callback profil yang masih tertunda dari akun sebelumnya.
             const current = ++generation;
             if (!user) return publish(null, 'signed-out');
             if (!user.emailVerified) return publish(user, 'verify');

@@ -22,13 +22,11 @@ import { BrandColors } from '@/constants/theme';
 export function AuthScreen({
   title,
   description,
-  headerAction,
   children,
   intro = false,
 }: {
   title: string;
   description?: string;
-  headerAction?: ReactNode;
   children: ReactNode;
   intro?: boolean;
 }) {
@@ -90,12 +88,9 @@ export function AuthScreen({
           ]}
         >
           <View style={styles.hero}>
-            <View style={styles.heroRow}>
-              <Text accessibilityRole="header" style={[styles.title, styles.heroTitle]}>
-                {title}
-              </Text>
-              {headerAction}
-            </View>
+            <Text accessibilityRole="header" style={styles.title}>
+              {title}
+            </Text>
             {description && <Text style={styles.description}>{description}</Text>}
           </View>
           {children}
@@ -384,14 +379,6 @@ const styles = StyleSheet.create({
   hero: {
     gap: 16,
     paddingBottom: 8,
-  },
-  heroRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  heroTitle: {
-    flex: 1,
   },
   title: {
     color: BrandColors.forestDeep,

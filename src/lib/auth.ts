@@ -17,6 +17,7 @@ import { Platform } from 'react-native';
 import type { UserProfile } from '@/types/user';
 
 import googleServices from '../../google-services.json';
+import { firebaseErrorCode } from './firebase-error';
 
 function validEmail(email: string) {
   const value = email.trim();
@@ -105,7 +106,7 @@ export async function resetPassword(email: string) {
   try {
     await sendPasswordResetEmail(auth, normalizedEmail);
   } catch (error) {
-    if (authCode(error) !== 'user-not-found') throw error;
+    if (firebaseErrorCode(error) !== 'user-not-found') throw error;
   }
 }
 
@@ -173,14 +174,8 @@ export function parseUserProfile(data: Record<string, unknown> | undefined): Use
   return null;
 }
 
-export function authCode(error: unknown) {
-  return error && typeof error === 'object' && 'code' in error
-    ? String(error.code).split('/').pop()
-    : '';
-}
-
 export function getAuthErrorMessage(error: unknown): string {
-  switch (authCode(error)) {
+  switch (firebaseErrorCode(error)) {
     case '10':
     case 'DEVELOPER_ERROR':
       return 'Konfigurasi Google Sign-In belum cocok dengan aplikasi Android ini. Hubungi pengelola.';
@@ -211,7 +206,7 @@ export function getAuthErrorMessage(error: unknown): string {
     case 'credential-already-in-use':
       return 'Akun Google ini sudah terhubung ke akun lain. Hubungi pengelola.';
     default:
-      return error instanceof Error && !authCode(error)
+      return error instanceof Error && !firebaseErrorCode(error)
         ? error.message
         : 'Terjadi kesalahan. Silakan coba lagi.';
   }

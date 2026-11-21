@@ -1,7 +1,7 @@
 import { getIdToken } from '@react-native-firebase/auth';
 import { doc, runTransaction, serverTimestamp } from '@react-native-firebase/firestore';
 
-import { authCode } from './auth';
+import { firebaseErrorCode } from './firebase-error';
 import { firestoreSession, readNim, readText } from './firestore-input';
 
 export async function completeProfile(name: string, studentNumber: string) {
@@ -36,7 +36,7 @@ export async function completeProfile(name: string, studentNumber: string) {
       transaction.set(keyRef, { studentUid: user.uid, createdAt: timestamp });
     });
   } catch (error) {
-    if (authCode(error) === 'permission-denied') {
+    if (firebaseErrorCode(error) === 'permission-denied') {
       throw new Error('Profil ditolak. Pastikan email sudah terverifikasi dan NIM belum dipakai.');
     }
     throw error;
@@ -68,7 +68,7 @@ export async function updateAccountProfile(name: string, studentNumber: string) 
       transaction.update(profileRef, { displayName, nim, updatedAt: timestamp });
     });
   } catch (error) {
-    if (authCode(error) === 'permission-denied') {
+    if (firebaseErrorCode(error) === 'permission-denied') {
       throw new Error('Profil tidak bisa disimpan. Pastikan NIM belum dipakai akun lain.');
     }
     throw error;
