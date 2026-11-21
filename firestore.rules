@@ -5,268 +5,74 @@ service cloud.firestore {
     function hasRole(role) {
       return request.auth != null
         && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accountStatus == 'active'
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
     }
 
-    function isStudentInSession(sessionId) {
-      let sessionPath = /databases/$(database)/documents/sessions/$(sessionId);
-      return hasRole('praktikan')
-        && exists(sessionPath)
-        && exists(/databases/$(database)/documents/classes/$(get(sessionPath).data.classId))
-        && request.auth.uid in get(
-          /databases/$(database)/documents/classes/$(get(sessionPath).data.classId)
-        ).data.get('studentIds', []);
+    function ownsAsAssistant(assistantUid) {
+      return hasRole('asisten') && assistantUid == request.auth.uid;
     }
 
-    function sessionHasStatus(sessionId, expectedStatus) {
-      let sessionPath = /databases/$(database)/documents/sessions/$(sessionId);
-      return exists(sessionPath)
-        && get(sessionPath).data.status == expectedStatus;
+    function ownsAsStudent(studentUid) {
+      return hasRole('praktikan') && studentUid == request.auth.uid;
     }
 
-    function matchesStudentProfile(data) {
-      return hasRole('praktikan')
-        && data.studentName == get(
-          /databases/$(database)/documents/users/$(request.auth.uid)
-        ).data.name
-        && data.nim == get(
-          /databases/$(database)/documents/users/$(request.auth.uid)
-        ).data.nim;
+    function activeMember(classId) {
+      let enrollmentId = classId + '~' + request.auth.uid;
+      let enrollment = /databases/$(database)/documents/enrollments/$(enrollmentId);
+      return exists(enrollment) && get(enrollment).data.status == 'active';
+    }
+
+    function canReadClassSessions(classId) {
+      let classPath = /databases/$(database)/documents/classes/$(classId);
+      return exists(classPath) && (
+        ownsAsAssistant(get(classPath).data.assistantUid)
+        || (hasRole('praktikan') && get(classPath).data.status == 'active' && activeMember(classId))
+      );
     }
 
     match /users/{uid} {
-      function isOwner() {
-        return request.auth != null && request.auth.uid == uid;
-      }
+      allow get: if request.auth != null && request.auth.uid == uid;
+    }
 
-      function validProfile() {
-        let data = request.resource.data;
-        return data.keys().hasAll(['name', 'role', 'createdAt'])
-          && data.keys().hasOnly(['name', 'nim', 'role', 'createdAt'])
-          && data.name is string && data.name.size() > 0 && data.name.size() <= 100
-          && data.createdAt == request.time
-          && (
-            (data.role == 'asisten' && !('nim' in data))
-            || (data.role == 'praktikan' && data.nim is string
-              && data.nim.size() > 0 && data.nim.size() <= 30)
-          );
-      }
-
-      allow get: if isOwner();
-      allow create: if isOwner() && validProfile();
-      allow list, update, delete: if false;
+    match /practicums/{practicumId} {
+      allow read: if ownsAsAssistant(resource.data.assistantUid);
     }
 
     match /classes/{classId} {
-      allow read: if (hasRole('asisten') && resource.data.assistantId == request.auth.uid)
-        || (hasRole('praktikan') && request.auth.uid in resource.data.get('studentIds', []));
-      allow write: if false;
+      allow get: if ownsAsAssistant(resource.data.assistantUid)
+        || (hasRole('praktikan') && resource.data.status == 'active' && activeMember(classId));
+      allow list: if ownsAsAssistant(resource.data.assistantUid);
+
+      match /sessions/{sessionId} {
+        allow read: if canReadClassSessions(classId);
+      }
     }
 
-    match /sessions/{sessionId} {
-      allow read: if (hasRole('asisten') && resource.data.assistantId == request.auth.uid)
-        || isStudentInSession(sessionId);
-      allow write: if false;
-    }
-
-    match /permits/{permitId} {
-      function isPermitAssistant() {
-        return hasRole('asisten')
-          && (
-            resource.data.get('assistantId', '') == request.auth.uid
-            || (
-              exists(/databases/$(database)/documents/sessions/$(resource.data.sessionId))
-              && get(
-                /databases/$(database)/documents/sessions/$(resource.data.sessionId)
-              ).data.assistantId == request.auth.uid
-            )
-          );
-      }
-
-      function isPermitStudent() {
-        return hasRole('praktikan')
-          && resource.data.studentId == request.auth.uid;
-      }
-
-      function isOwnMissingPermitPath() {
-        return hasRole('praktikan')
-          && permitId.matches('^.+_' + request.auth.uid + '$')
-          && !exists(/databases/$(database)/documents/permits/$(permitId));
-      }
-
-      function validPermitCreate() {
-        let data = request.resource.data;
-        return hasRole('praktikan')
-          && data.keys().hasAll([
-            'sessionId', 'sessionInfo', 'assistantId', 'studentId',
-            'studentName', 'nim', 'reason', 'aiClassification', 'aiNote',
-            'status', 'reviewedBy', 'reviewNote', 'submittedAt'
-          ])
-          && data.keys().hasOnly([
-            'sessionId', 'sessionInfo', 'assistantId', 'studentId',
-            'studentName', 'nim', 'reason', 'aiClassification', 'aiNote',
-            'status', 'reviewedBy', 'reviewNote', 'submittedAt'
-          ])
-          && data.sessionId is string
-          && data.sessionId.size() > 0
-          && permitId == data.sessionId + '_' + request.auth.uid
-          && isStudentInSession(data.sessionId)
-          && data.assistantId == get(
-            /databases/$(database)/documents/sessions/$(data.sessionId)
-          ).data.assistantId
-          && data.studentId == request.auth.uid
-          && matchesStudentProfile(data)
-          && data.reason is string
-          && data.reason.size() >= 20
-          && data.reason.size() <= 1000
-          && data.sessionInfo is map
-          && data.sessionInfo.keys().hasAll(['practicum', 'module', 'date'])
-          && data.sessionInfo.keys().hasOnly(['practicum', 'module', 'date'])
-          && data.sessionInfo.practicum is string
-          && data.sessionInfo.module is string
-          && data.sessionInfo.date is string
-          && data.aiClassification in ['valid', 'perlu_ditinjau', 'tidak_valid']
-          && data.aiNote is string
-          && data.aiNote.size() <= 1000
-          && data.status == 'pending'
-          && data.reviewedBy == null
-          && data.reviewNote == null
-          && data.submittedAt == request.time;
-      }
-
-      function validPermitReview() {
-        let data = request.resource.data;
-        return resource.data.status == 'pending'
-          && data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedBy', 'reviewNote'])
-          && data.reviewedBy == request.auth.uid
-          && (
-            (
-              data.status == 'approved'
-              && (
-                data.reviewNote == null
-                || (data.reviewNote is string && data.reviewNote.size() <= 500)
-              )
-            )
-            || (
-              data.status == 'rejected'
-              && data.reviewNote is string
-              && data.reviewNote.size() > 0
-              && data.reviewNote.size() <= 500
-            )
-          );
-      }
-
-      allow get: if isOwnMissingPermitPath()
-        || isPermitAssistant()
-        || isPermitStudent();
-      allow list: if isPermitAssistant() || isPermitStudent();
-      allow create: if validPermitCreate();
-      allow update: if isPermitAssistant() && validPermitReview();
-      allow delete: if false;
+    match /enrollments/{enrollmentId} {
+      allow read: if ownsAsAssistant(resource.data.assistantUid)
+        || ownsAsStudent(resource.data.studentUid);
     }
 
     match /attendances/{attendanceId} {
-      function isAttendanceAssistant() {
-        return hasRole('asisten')
-          && exists(/databases/$(database)/documents/sessions/$(resource.data.sessionId))
-          && get(
-            /databases/$(database)/documents/sessions/$(resource.data.sessionId)
-          ).data.assistantId == request.auth.uid;
-      }
+      allow read: if ownsAsAssistant(resource.data.assistantUid)
+        || ownsAsStudent(resource.data.studentUid);
+    }
 
-      function isAttendanceStudent() {
-        return hasRole('praktikan')
-          && resource.data.studentId == request.auth.uid;
-      }
-
-      function isOwnMissingAttendancePath() {
-        return hasRole('praktikan')
-          && attendanceId.matches('^.+_' + request.auth.uid + '$')
-          && !exists(/databases/$(database)/documents/attendances/$(attendanceId));
-      }
-
-      function validAttendanceCreate() {
-        let data = request.resource.data;
-        return hasRole('praktikan')
-          && data.keys().hasAll([
-            'sessionId', 'studentId', 'studentName', 'nim', 'checkedInAt'
-          ])
-          && data.keys().hasOnly([
-            'sessionId', 'studentId', 'studentName', 'nim', 'checkedInAt'
-          ])
-          && data.sessionId is string
-          && data.sessionId.size() > 0
-          && attendanceId == data.sessionId + '_' + request.auth.uid
-          && isStudentInSession(data.sessionId)
-          && sessionHasStatus(data.sessionId, 'open')
-          && data.studentId == request.auth.uid
-          && matchesStudentProfile(data)
-          && data.checkedInAt == request.time;
-      }
-
-      allow get: if isOwnMissingAttendancePath()
-        || isAttendanceAssistant()
-        || isAttendanceStudent();
-      allow list: if isAttendanceAssistant() || isAttendanceStudent();
-      allow create: if validAttendanceCreate();
-      allow update, delete: if false;
+    match /permits/{permitId} {
+      allow read: if ownsAsAssistant(resource.data.assistantUid)
+        || ownsAsStudent(resource.data.studentUid);
     }
 
     match /reviews/{reviewId} {
-      function isReviewAssistant() {
-        return hasRole('asisten')
-          && exists(/databases/$(database)/documents/sessions/$(resource.data.sessionId))
-          && get(
-            /databases/$(database)/documents/sessions/$(resource.data.sessionId)
-          ).data.assistantId == request.auth.uid;
-      }
-
-      function isReviewStudent() {
-        return hasRole('praktikan')
-          && resource.data.studentId == request.auth.uid;
-      }
-
-      function isOwnMissingReviewPath() {
-        return hasRole('praktikan')
-          && reviewId.matches('^.+_' + request.auth.uid + '$')
-          && !exists(/databases/$(database)/documents/reviews/$(reviewId));
-      }
-
-      function validReviewCreate() {
-        let data = request.resource.data;
-        return hasRole('praktikan')
-          && data.keys().hasAll([
-            'sessionId', 'studentId', 'studentName', 'rating', 'comment', 'createdAt'
-          ])
-          && data.keys().hasOnly([
-            'sessionId', 'studentId', 'studentName', 'rating', 'comment', 'createdAt'
-          ])
-          && data.sessionId is string
-          && data.sessionId.size() > 0
-          && reviewId == data.sessionId + '_' + request.auth.uid
-          && isStudentInSession(data.sessionId)
-          && sessionHasStatus(data.sessionId, 'closed')
-          && exists(
-            /databases/$(database)/documents/attendances/$(data.sessionId + '_' + request.auth.uid)
-          )
-          && data.studentId == request.auth.uid
-          && matchesStudentProfile(data)
-          && data.rating is int
-          && data.rating >= 1
-          && data.rating <= 5
-          && data.comment is string
-          && data.comment.size() <= 1000
-          && data.createdAt == request.time;
-      }
-
-      allow get: if isOwnMissingReviewPath()
-        || isReviewAssistant()
-        || isReviewStudent();
-      allow list: if isReviewAssistant() || isReviewStudent();
-      allow create: if validReviewCreate();
-      allow update, delete: if false;
+      allow read: if ownsAsStudent(resource.data.studentUid);
     }
 
+    match /reviewSummaries/{sessionId} {
+      allow read: if ownsAsAssistant(resource.data.assistantUid);
+    }
+
+    // All writes, lookups and job documents are reserved for the trusted backend.
     match /{document=**} {
       allow read, write: if false;
     }
