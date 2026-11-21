@@ -353,3 +353,36 @@ test('cancel before Firebase loads never attaches a listener', async () => {
   assert.deepEqual(s.listeners, []);
   assert.deepEqual(s.errors, []);
 });
+
+test('schedule separates open and scheduled sessions from completed or cancelled sessions', () => {
+  const { groupSchedule } = loadTypeScript('src/features/academic/schedule-groups.ts');
+  const session = (id, status, time) => ({ id, status, startsAt: new Timestamp(time) });
+
+  const groups = groupSchedule(
+    [
+      session('completed', 'closed', 1),
+      session('late', 'scheduled', 2),
+      session('live', 'open', 3),
+      session('next', 'scheduled', 4),
+      session('cancelled', 'cancelled', 5),
+    ],
+    3,
+  );
+
+  assert.deepEqual(
+    groups.open.map((item) => item.id),
+    ['live'],
+  );
+  assert.deepEqual(
+    groups.upcoming.map((item) => item.id),
+    ['next'],
+  );
+  assert.deepEqual(
+    groups.overdue.map((item) => item.id),
+    ['late'],
+  );
+  assert.deepEqual(
+    groups.past.map((item) => item.id),
+    ['cancelled', 'completed'],
+  );
+});

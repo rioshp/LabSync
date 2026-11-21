@@ -19,7 +19,7 @@ export function Page({
   detail = false,
   children,
 }: {
-  title: string;
+  title?: string;
   detail?: boolean;
   children?: ReactNode;
 }) {
@@ -42,18 +42,20 @@ export function Page({
           <Text style={styles.link}>‹ Kembali</Text>
         </Pressable>
       )}
-      <Text accessibilityRole="header" style={styles.title}>
-        {title}
-      </Text>
+      {title && (
+        <Text accessibilityRole="header" style={styles.title}>
+          {title}
+        </Text>
+      )}
       {children}
     </ScrollView>
   );
 }
 
-export function Card({ title, children }: { title: string; children?: ReactNode }) {
+export function Card({ title, children }: { title?: string; children?: ReactNode }) {
   return (
     <View style={styles.card}>
-      <Text style={styles.heading}>{title}</Text>
+      {title && <Text style={styles.heading}>{title}</Text>}
       {children}
     </View>
   );

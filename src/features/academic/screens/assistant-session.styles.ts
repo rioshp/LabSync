@@ -75,9 +75,6 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   closeButtonText: { color: '#9E3636', fontSize: 14, fontWeight: '800' },
-  liveNote: { minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 7 },
-  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#26925D' },
-  liveText: { color: BrandColors.forest, fontSize: 13, fontWeight: '700' },
   completedNote: { color: BrandColors.muted, fontSize: 13, lineHeight: 19 },
   errorText: { color: '#A83131', fontSize: 13, lineHeight: 19 },
   offlineNotice: {
@@ -165,7 +162,6 @@ export const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 10,
   },
-  inlineLoading: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   emptyCard: {
     padding: 16,
     gap: 8,

@@ -92,17 +92,20 @@ export default function AssistantSessionRoute() {
       >
         <Pressable
           accessibilityRole="button"
-          onPress={() => router.back()}
+          onPress={() => {
+            if (router.canGoBack()) router.back();
+            else router.replace('/jadwal');
+          }}
           style={styles.backButton}
         >
-          <Text style={styles.backText}>‹ Kembali ke jadwal</Text>
+          <Text style={styles.backText}>‹ Kembali</Text>
         </Pressable>
         <Text accessibilityRole="header" style={styles.title}>
-          Detail{'\n'}sesi.
+          Detail sesi
         </Text>
         {[sessionState, attendanceState, summaryState].some((source) => source.offline) && (
           <Text accessibilityLiveRegion="polite" style={styles.offlineNotice}>
-            Data dari cache dan mungkin belum terbaru. Periksa koneksi sebelum mengubah status sesi.
+            Data mungkin belum terbaru. Periksa koneksi sebelum mengubah sesi.
           </Text>
         )}
         {sessionState.loading ? (
@@ -156,10 +159,6 @@ export default function AssistantSessionRoute() {
               ) : null}
               {session.status === 'open' ? (
                 <View style={styles.actionRow}>
-                  <View style={styles.liveNote}>
-                    <View style={styles.liveDot} />
-                    <Text style={styles.liveText}>Presensi sedang dibuka</Text>
-                  </View>
                   <Pressable
                     accessibilityRole="button"
                     onPress={() => {
@@ -171,11 +170,6 @@ export default function AssistantSessionRoute() {
                     <Text style={styles.closeButtonText}>Tutup sesi</Text>
                   </Pressable>
                 </View>
-              ) : null}
-              {session.status === 'closed' ? (
-                <Text style={styles.completedNote}>
-                  Sesi sudah selesai. Rekap presensi dan ringkasan ulasan tersedia di bawah.
-                </Text>
               ) : null}
               {session.status === 'cancelled' ? (
                 <Text style={styles.completedNote}>
@@ -189,11 +183,12 @@ export default function AssistantSessionRoute() {
                 <Text accessibilityRole="header" style={styles.sectionTitle}>
                   Rekap presensi
                 </Text>
-                <Text style={styles.countBadge}>{attendanceState.value.length} hadir</Text>
+                {!attendanceState.loading &&
+                  !attendanceState.error &&
+                  attendanceState.value.length > 0 && (
+                    <Text style={styles.countBadge}>{attendanceState.value.length} hadir</Text>
+                  )}
               </View>
-              <Text style={styles.description}>
-                Nama, NIM, dan waktu presensi diperbarui langsung.
-              </Text>
               {attendanceState.loading ? (
                 <Loading label="Memuat rekap presensi..." />
               ) : attendanceState.error ? (
@@ -201,11 +196,6 @@ export default function AssistantSessionRoute() {
               ) : attendanceState.value.length === 0 ? (
                 <View style={styles.innerEmpty}>
                   <Text style={styles.cardTitle}>Belum ada praktikan yang presensi</Text>
-                  <Text style={styles.description}>
-                    {session.status === 'open'
-                      ? 'Rekap akan terisi saat praktikan mulai hadir.'
-                      : 'Rekap sesi ini masih kosong.'}
-                  </Text>
                 </View>
               ) : (
                 attendanceState.value.map((record) => (
@@ -232,21 +222,22 @@ export default function AssistantSessionRoute() {
                 <Text accessibilityRole="header" style={styles.sectionTitle}>
                   Ringkasan ulasan
                 </Text>
-                <Text style={styles.countBadge}>{summaryState.value.totalSubmitted} ulasan</Text>
+                {!summaryState.loading &&
+                  !summaryState.error &&
+                  summaryState.value.totalSubmitted > 0 && (
+                    <Text style={styles.countBadge}>
+                      {summaryState.value.totalSubmitted} ulasan
+                    </Text>
+                  )}
               </View>
-              <Text style={styles.description}>
-                Hanya jumlah sentimen yang ditampilkan. Isi dan identitas ulasan tetap privat.
-              </Text>
-              {summaryState.error ? (
+              {summaryState.loading ? (
+                <Loading label="Memuat ringkasan…" />
+              ) : summaryState.error ? (
                 <LoadError message={summaryState.error} retry={summaryState.retry} />
+              ) : summaryState.value.totalSubmitted === 0 ? (
+                <Text style={styles.emptyHint}>Belum ada ulasan.</Text>
               ) : (
                 <>
-                  {summaryState.loading && (
-                    <View style={styles.inlineLoading}>
-                      <ActivityIndicator color={BrandColors.forest} />
-                      <Text style={styles.description}>Memuat ringkasan...</Text>
-                    </View>
-                  )}
                   <View style={styles.sentimentGrid}>
                     <SentimentCard
                       label="Positif"
@@ -267,16 +258,19 @@ export default function AssistantSessionRoute() {
                       background="#FCECEC"
                     />
                   </View>
-                  <View style={styles.summaryFooter}>
-                    <Text style={styles.summaryFootText}>
-                      {summaryState.value.pendingCount} menunggu analisis
-                    </Text>
-                    <Text style={styles.summaryFootText}>
-                      {summaryState.value.failedCount} gagal
-                    </Text>
-                  </View>
-                  {!summaryState.loading && summaryState.value.totalSubmitted === 0 && (
-                    <Text style={styles.emptyHint}>Belum ada ulasan untuk sesi ini.</Text>
+                  {(summaryState.value.pendingCount > 0 || summaryState.value.failedCount > 0) && (
+                    <View style={styles.summaryFooter}>
+                      {summaryState.value.pendingCount > 0 && (
+                        <Text style={styles.summaryFootText}>
+                          {summaryState.value.pendingCount} menunggu analisis
+                        </Text>
+                      )}
+                      {summaryState.value.failedCount > 0 && (
+                        <Text style={styles.summaryFootText}>
+                          {summaryState.value.failedCount} gagal dianalisis
+                        </Text>
+                      )}
+                    </View>
                   )}
                 </>
               )}

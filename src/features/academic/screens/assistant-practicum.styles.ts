@@ -13,16 +13,6 @@ export const styles = StyleSheet.create({
     backgroundColor: BrandColors.pageBackground,
   },
   title: { color: BrandColors.forestDeep, fontSize: 36, lineHeight: 42, fontWeight: '800' },
-  identityCard: {
-    padding: 18,
-    gap: 5,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: BrandColors.line,
-    backgroundColor: BrandColors.paper,
-  },
-  eyebrow: { color: BrandColors.forestSoft, fontSize: 12, fontWeight: '800', letterSpacing: 1.1 },
-  identityName: { color: BrandColors.forestDeep, fontSize: 20, fontWeight: '700' },
   description: { color: BrandColors.forestSoft, fontSize: 13, lineHeight: 20 },
   section: { gap: 10 },
   sectionHeader: {

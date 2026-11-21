@@ -28,6 +28,7 @@ export default function AppLayout() {
         name="jadwal"
         options={{
           title: role === 'asisten' ? 'Jadwal' : 'Jadwal Saya',
+          headerTitle: '',
           tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 23 }}>▦</Text>,
         }}
       />
@@ -36,6 +37,7 @@ export default function AppLayout() {
           name="asisten/praktikum"
           options={{
             title: 'Praktikum',
+            headerTitle: '',
             tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 23 }}>▤</Text>,
           }}
         />
@@ -48,7 +50,12 @@ export default function AppLayout() {
         />
         <Tabs.Screen
           name="asisten/sesi"
-          options={{ title: 'Kelola Sesi', href: null, tabBarStyle: { display: 'none' } }}
+          options={{
+            title: 'Kelola Sesi',
+            headerTitle: '',
+            href: null,
+            tabBarStyle: { display: 'none' },
+          }}
         />
       </Tabs.Protected>
       <Tabs.Protected guard={role === 'praktikan'}>
@@ -61,15 +68,30 @@ export default function AppLayout() {
         />
         <Tabs.Screen
           name="praktikan/presensi"
-          options={{ title: 'Presensi', href: null, tabBarStyle: { display: 'none' } }}
+          options={{
+            title: 'Presensi',
+            headerTitle: '',
+            href: null,
+            tabBarStyle: { display: 'none' },
+          }}
         />
         <Tabs.Screen
           name="praktikan/ajukan-izin"
-          options={{ title: 'Ajukan Izin', href: null, tabBarStyle: { display: 'none' } }}
+          options={{
+            title: 'Ajukan Izin',
+            headerTitle: '',
+            href: null,
+            tabBarStyle: { display: 'none' },
+          }}
         />
         <Tabs.Screen
           name="praktikan/ulasan"
-          options={{ title: 'Ulasan', href: null, tabBarStyle: { display: 'none' } }}
+          options={{
+            title: 'Ulasan',
+            headerTitle: '',
+            href: null,
+            tabBarStyle: { display: 'none' },
+          }}
         />
       </Tabs.Protected>
     </Tabs>

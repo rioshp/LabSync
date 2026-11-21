@@ -59,7 +59,7 @@ function PermitInbox({ uid }: { uid: string }) {
         decision: selected.decision,
         decisionNote: note.trim() || undefined,
       });
-      setNotice('Keputusan izin tersimpan.');
+      setNotice(selected.decision === 'approved' ? 'Izin disetujui.' : 'Izin ditolak.');
       setSelected(null);
     } catch (error) {
       setError(mutationError(error));
@@ -70,7 +70,7 @@ function PermitInbox({ uid }: { uid: string }) {
   }
 
   return (
-    <Page title="Daftar izin">
+    <Page>
       <View style={local.filters}>
         {filters.map((item) => (
           <AuthButton
@@ -145,7 +145,11 @@ function PermitInbox({ uid }: { uid: string }) {
             editable={!busy}
           />
           <AuthError message={error} />
-          <AuthButton title="Konfirmasi" onPress={confirm} busy={busy} />
+          <AuthButton
+            title={selected.decision === 'approved' ? 'Setujui izin' : 'Tolak izin'}
+            onPress={confirm}
+            busy={busy}
+          />
           <AuthButton title="Batal" onPress={() => setSelected(null)} disabled={busy} />
         </Confirm>
       )}

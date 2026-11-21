@@ -65,7 +65,7 @@ const EMPTY_DRAFT: Draft = {
 
 export default function AssistantPracticumRoute() {
   const insets = useSafeAreaInsets();
-  const { user, profile, role } = useAuth();
+  const { user, role } = useAuth();
   const uid = user?.uid;
   const practicumsState = useAssistantPracticums(uid);
   const practicums = practicumsState.value;
@@ -347,18 +347,13 @@ export default function AssistantPracticumRoute() {
         keyboardShouldPersistTaps="handled"
       >
         <Text accessibilityRole="header" style={styles.title}>
-          Kelola{'\n'}praktikum.
+          Kelola praktikum
         </Text>
-        <View style={styles.identityCard}>
-          <Text style={styles.eyebrow}>ASISTEN</Text>
-          <Text style={styles.identityName}>{profile?.displayName ?? 'Asisten Praktikum'}</Text>
-          <Text style={styles.description}>Atur praktikum, kelas, peserta, dan jadwal sesi.</Text>
-        </View>
         {[practicumsState, classesState, rosterState, sessionsState].some(
           (source) => source.offline,
         ) && (
           <Text accessibilityLiveRegion="polite" style={styles.offlineNotice}>
-            Data dari cache dan mungkin belum terbaru. Periksa koneksi sebelum menyimpan perubahan.
+            Data mungkin belum terbaru. Periksa koneksi sebelum menyimpan.
           </Text>
         )}
 
@@ -377,14 +372,13 @@ export default function AssistantPracticumRoute() {
               <Text accessibilityRole="header" style={styles.sectionTitle}>
                 Praktikum
               </Text>
-              <Text style={styles.description}>Kelola nama praktikum milik Anda.</Text>
             </View>
             <Pressable
               accessibilityRole="button"
               onPress={() => openPracticumForm()}
               style={styles.primaryButton}
             >
-              <Text style={styles.primaryButtonText}>+ Praktikum</Text>
+              <Text style={styles.primaryButtonText}>Buat praktikum</Text>
             </Pressable>
           </View>
           {practicumsState.loading ? (
@@ -456,7 +450,7 @@ export default function AssistantPracticumRoute() {
                   onPress={() => openClassForm(selectedPracticum.id)}
                   style={styles.secondaryButton}
                 >
-                  <Text style={styles.secondaryButtonText}>+ Kelas</Text>
+                  <Text style={styles.secondaryButtonText}>Buat kelas</Text>
                 </Pressable>
               )}
             </View>
@@ -499,6 +493,15 @@ export default function AssistantPracticumRoute() {
                     </Pressable>
                     {item.status === 'active' && (
                       <View style={styles.resourceActions}>
+                        {selected && (
+                          <Pressable
+                            accessibilityRole="button"
+                            onPress={() => openSessionForm(item)}
+                            style={styles.secondaryButton}
+                          >
+                            <Text style={styles.secondaryButtonText}>Buat sesi</Text>
+                          </Pressable>
+                        )}
                         <SmallButton
                           label="Ubah"
                           onPress={() => openClassForm(selectedPracticum.id, item)}
@@ -526,20 +529,20 @@ export default function AssistantPracticumRoute() {
                     Peserta kelas
                   </Text>
                   <Text style={styles.description}>
-                    {selectedClass.name} ·{' '}
-                    {rosterState.loading
-                      ? 'Memuat roster'
-                      : `${rosterState.value.length} peserta aktif`}
+                    {selectedClass.name}
+                    {!rosterState.loading && !rosterState.error && rosterState.value.length > 0
+                      ? ' · ' + rosterState.value.length + ' peserta aktif'
+                      : ''}
                   </Text>
                 </View>
               </View>
               {selectedClass.status === 'active' && (
                 <View style={styles.addStudentRow}>
                   <TextInput
-                    accessibilityLabel="NIM peserta yang akan ditambahkan"
+                    accessibilityLabel="Cari berdasarkan NIM"
                     value={nimInput}
                     onChangeText={setNimInput}
-                    placeholder="Masukkan NIM tepat"
+                    placeholder="Cari berdasarkan NIM"
                     placeholderTextColor={BrandColors.muted}
                     autoCapitalize="characters"
                     editable={!lookingUpStudent}
@@ -575,10 +578,7 @@ export default function AssistantPracticumRoute() {
               ) : rosterState.error ? (
                 <LoadError message={rosterState.error} retry={rosterState.retry} />
               ) : rosterState.value.length === 0 ? (
-                <EmptyCard
-                  title="Roster masih kosong"
-                  body="Tambahkan peserta memakai NIM yang terdaftar pada akun praktikan aktif."
-                />
+                <EmptyCard title="Belum ada peserta" />
               ) : (
                 rosterState.value.map((student) => (
                   <View key={student.id} style={styles.rosterRow}>
@@ -610,25 +610,13 @@ export default function AssistantPracticumRoute() {
                     {selectedClass.name} · {selectedClass.timeZone}
                   </Text>
                 </View>
-                {selectedClass.status === 'active' && (
-                  <Pressable
-                    accessibilityRole="button"
-                    onPress={() => openSessionForm(selectedClass)}
-                    style={styles.secondaryButton}
-                  >
-                    <Text style={styles.secondaryButtonText}>+ Sesi</Text>
-                  </Pressable>
-                )}
               </View>
               {sessionsState.loading ? (
                 <Loading label="Memuat sesi..." />
               ) : sessionsState.error ? (
                 <LoadError message={sessionsState.error} retry={sessionsState.retry} />
               ) : sessionsState.value.length === 0 ? (
-                <EmptyCard
-                  title="Belum ada sesi"
-                  body="Buat sesi dengan topik, waktu, dan ruang yang jelas."
-                />
+                <EmptyCard title="Belum ada sesi" />
               ) : (
                 sessionsState.value.map((session) => {
                   const badge = SessionStatusStyles[session.status];
@@ -709,7 +697,7 @@ export default function AssistantPracticumRoute() {
                       onPress={() => setDialog(null)}
                       style={styles.cancelButton}
                     >
-                      <Text style={styles.cancelButtonText}>Kembali</Text>
+                      <Text style={styles.cancelButtonText}>Batal</Text>
                     </Pressable>
                     <Pressable
                       accessibilityRole="button"
@@ -814,7 +802,7 @@ export default function AssistantPracticumRoute() {
                       />
                       {dialog.kind === 'class' && (
                         <Field
-                          label="Zona waktu IANA"
+                          label="Zona waktu"
                           value={draft.timeZone}
                           onChangeText={(timeZone) => setDraft((value) => ({ ...value, timeZone }))}
                           placeholder="Asia/Jakarta"
@@ -912,11 +900,11 @@ function LoadError({ message, retry }: { message: string; retry: () => void }) {
   );
 }
 
-function EmptyCard({ title, body }: { title: string; body: string }) {
+function EmptyCard({ title, body }: { title: string; body?: string }) {
   return (
     <View style={styles.emptyCard}>
       <Text style={styles.cardTitle}>{title}</Text>
-      <Text style={styles.description}>{body}</Text>
+      {body && <Text style={styles.description}>{body}</Text>}
     </View>
   );
 }

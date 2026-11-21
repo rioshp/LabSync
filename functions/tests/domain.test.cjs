@@ -432,3 +432,39 @@ test('enrollment checks that the confirmed UID still belongs to the NIM', async 
   assert.equal(retry.added, false);
   assert.equal([...env.db.store.keys()].filter((key) => key.startsWith('enrollments/')).length, 1);
 });
+
+test('review access only returns own attendance and unlocks after the session closes', async () => {
+  const env = setup();
+  const assistant = env.auth('assistant-a');
+  const student = env.auth('student-a');
+  env.addAssistant('assistant-a');
+  await env.call({ action: 'completeProfile', displayName: 'Dewi', nim: '2026001' }, student);
+
+  const ids = await makeClassAndSession(env, 'assistant-a', 'student-a');
+  const { classId, sessionId } = ids;
+  const attendanceId = sessionId + '~student-a';
+  const request = { action: 'getReviewAccess', attendanceIds: [attendanceId] };
+  assert.deepEqual(await env.call(request, student), {});
+
+  await env.call({ action: 'openSession', classId, sessionId }, assistant);
+  await env.call({ action: 'checkIn', classId, sessionId }, student);
+  assert.deepEqual(await env.call(request, student), {
+    [attendanceId]: { classId, state: 'waiting' },
+  });
+  const other = env.auth('student-b');
+  await env.call({ action: 'completeProfile', displayName: 'Ayu', nim: '2026002' }, other);
+  assert.deepEqual(await env.call(request, other), {});
+
+  await env.call({ action: 'closeSession', classId, sessionId }, assistant);
+  await env.call({ action: 'removeStudent', classId, studentUid: 'student-a' }, assistant);
+  assert.deepEqual(await env.call(request, student), {
+    [attendanceId]: { classId, state: 'ready' },
+  });
+  await env.call(
+    { action: 'submitReview', classId, sessionId, text: 'Praktikum berjalan dengan baik.' },
+    student,
+  );
+  assert.deepEqual(await env.call(request, student), {
+    [attendanceId]: { classId, state: 'submitted' },
+  });
+});

@@ -23,6 +23,7 @@ All requests have `{ action, ...fields }`. Authenticated users need an active pr
 | `checkIn` | `classId`, `sessionId` |
 | `submitPermit` | `classId`, `sessionId`, `reason` |
 | `decidePermit` | `permitId`, `decision` (`approved` or `rejected`), optional `decisionNote` |
+| `getReviewAccess` | `attendanceIds` (maksimal 20, hanya milik pengguna) |
 | `submitReview` | `classId`, `sessionId`, `text` |
 
 Session times are Unix milliseconds (UTC). Creates with auto-generated document IDs require a stable client `requestId`; reusing it with the same operation and payload returns the original `{ id }`, while a different payload is rejected. Receipts are intended to expire after seven days. NIM lookup is an exact normalized match; each assistant is limited to 20 calls per rolling minute by the private `lookupLimits/{assistantUid}` document.

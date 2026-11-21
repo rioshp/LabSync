@@ -802,6 +802,41 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
     });
   }
 
+  async function getReviewAccess(input, uid) {
+    assertAllowedKeys(input, ['action', 'attendanceIds']);
+    if (!Array.isArray(input.attendanceIds) || input.attendanceIds.length > 20)
+      error('invalid-argument', 'Pilih maksimal 20 catatan kehadiran.');
+    const ids = [...new Set(input.attendanceIds.map((id) => documentId(id, 'attendanceId')))];
+
+    return db.runTransaction(
+      async (tx) => {
+        await requireStudent(tx, uid);
+        const records = await Promise.all(
+          ids.map(async (id) => {
+            const attendanceSnap = await tx.get(attendances.doc(id));
+            const attendance = attendanceSnap.data();
+            if (!attendance || attendance.studentUid !== uid) return null;
+
+            const { classId, sessionId } = attendance;
+            const [sessionSnap, reviewSnap] = await Promise.all([
+              tx.get(classes.doc(classId).collection('sessions').doc(sessionId)),
+              tx.get(reviews.doc(id)),
+            ]);
+            const state =
+              reviewSnap.data()?.studentUid === uid
+                ? 'submitted'
+                : sessionSnap.data()?.status === 'closed'
+                  ? 'ready'
+                  : 'waiting';
+            return [id, { state, classId }];
+          }),
+        );
+        return Object.fromEntries(records.filter(Boolean));
+      },
+      { readOnly: true },
+    );
+  }
+
   async function submitReview(input, uid) {
     assertAllowedKeys(input, ['action', 'classId', 'sessionId', 'text']);
     const classId = documentId(input.classId, 'classId');
@@ -1054,6 +1089,8 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
         return submitPermit(input, uid);
       case 'decidePermit':
         return decidePermit(input, uid);
+      case 'getReviewAccess':
+        return getReviewAccess(input, uid);
       case 'submitReview':
         return submitReview(input, uid);
       case 'provisionAssistant':

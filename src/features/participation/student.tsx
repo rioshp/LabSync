@@ -19,6 +19,7 @@ import {
   type Session,
 } from './data';
 import { Card, Feedback, Page, styles } from './ui';
+import { useReviewAccess } from './use-review-access';
 
 function useContextIds() {
   const { classId, sessionId } = useLocalSearchParams<{ classId?: string; sessionId?: string }>();
@@ -89,6 +90,12 @@ function SessionDetail({
   const present = attendance.data?.[0];
   const permit = permits.data?.[0];
   const permitBlocks = permit && permit.status !== 'rejected';
+  const canReview = !!present && current?.status === 'closed';
+  const reviews = useLive<Review[]>(
+    uid,
+    canReview ? ownRecord('reviews', uid, sessionId) : null,
+    attempt,
+  );
 
   async function checkIn() {
     if (lock.current) return;
@@ -157,15 +164,18 @@ function SessionDetail({
                 }
               />
             )}
-          {present && current.status === 'closed' && (
+          {canReview && reviews.data && (
             <AuthButton
-              title="Tulis atau lihat ulasan"
+              title={reviews.data.length ? 'Lihat ulasan' : 'Tulis ulasan'}
               onPress={() =>
                 router.push({ pathname: '/praktikan/ulasan', params: { classId, sessionId } })
               }
             />
           )}
-          {notice ? (
+          {canReview && reviews.error && (
+            <Feedback {...reviews} retry={() => setAttempt((n) => n + 1)} />
+          )}
+          {notice && !present ? (
             <Text accessibilityLiveRegion="polite" style={styles.text}>
               {notice}
             </Text>
@@ -215,6 +225,13 @@ function ParticipationForm({
     attempt,
   );
   const record = previous.data?.[0];
+  const attendanceId = sessionId + '~' + uid;
+  const checkingReview = review && !record && !sent && !!previous.data && !previous.offline;
+  const reviewAccess = useReviewAccess(checkingReview ? [attendanceId] : [], attempt);
+  const access = reviewAccess.access?.[attendanceId];
+  const reviewAllowed = access?.state === 'ready' && access.classId === classId;
+  const reviewAlreadySubmitted = access?.state === 'submitted' && access.classId === classId;
+  const showForm = !record && !sent && !!previous.data && (!review || reviewAllowed);
 
   async function send() {
     if (lock.current) return;
@@ -271,19 +288,38 @@ function ParticipationForm({
           }
         />
       )}
-      {!record && !sent && !previous.loading && !previous.error && (
-        <Card title={review ? 'Ceritakan pengalaman praktikum' : 'Alasan ketidakhadiran'}>
+      {checkingReview &&
+        !reviewAllowed &&
+        (reviewAlreadySubmitted ? (
+          <Card title="Memuat ulasan…" />
+        ) : reviewAccess.access ? (
+          <Card title="Ulasan belum tersedia">
+            <Text style={styles.text}>
+              Ulasan dapat dikirim setelah sesi yang kamu hadiri selesai.
+            </Text>
+          </Card>
+        ) : (
+          <Feedback
+            loading={!reviewAccess.error}
+            offline={false}
+            error={reviewAccess.error}
+            retry={() => setAttempt((n) => n + 1)}
+          />
+        ))}
+      {showForm && (
+        <Card>
           {review && (
             <Text style={styles.text}>Hindari mencantumkan informasi pribadi dalam ulasan.</Text>
           )}
           <AuthField
-            label={review ? 'Ulasan' : 'Alasan'}
+            label={review ? 'Ulasan' : 'Alasan ketidakhadiran'}
             value={text}
             onChangeText={setText}
             multiline
             maxLength={1000}
             editable={!busy}
           />
+          {text.trim().length < 10 && <Text style={styles.text}>Minimal 10 karakter.</Text>}
           <AuthError message={error} />
           <AuthButton
             title={review ? 'Kirim ulasan' : 'Kirim izin'}
@@ -318,13 +354,20 @@ function History({ uid }: { uid: string }) {
     attempt,
   );
   const retry = () => setAttempt((n) => n + 1);
+  const reviewAccess = useReviewAccess(
+    attendances.offline ? [] : (attendances.data ?? []).map((item) => item.id),
+    attempt,
+  );
   return (
-    <Page title="Riwayat saya">
+    <Page>
       <Text accessibilityRole="header" style={styles.heading}>
         Kehadiran
       </Text>
       <Feedback {...attendances} retry={retry} />
       {attendances.data?.length === 0 && <Card title="Belum ada presensi." />}
+      {reviewAccess.error && (
+        <Feedback loading={false} offline={false} error={reviewAccess.error} retry={retry} />
+      )}
       {attendances.data?.map((item) => (
         <Card key={item.id} title={item.sessionSnapshot.moduleTitle}>
           <Text style={styles.text}>
@@ -333,15 +376,20 @@ function History({ uid }: { uid: string }) {
           <Text style={styles.text}>
             {formatTime(item.checkedInAt, item.sessionSnapshot.timeZone)}
           </Text>
-          <AuthButton
-            title="Tulis atau lihat ulasan"
-            onPress={() =>
-              router.push({
-                pathname: '/praktikan/ulasan',
-                params: { classId: item.classId, sessionId: item.sessionId },
-              })
-            }
-          />
+          {reviewAccess.access?.[item.id]?.state === 'submitted' ||
+          reviewAccess.access?.[item.id]?.state === 'ready' ? (
+            <AuthButton
+              title={
+                reviewAccess.access[item.id].state === 'submitted' ? 'Lihat ulasan' : 'Tulis ulasan'
+              }
+              onPress={() =>
+                router.push({
+                  pathname: '/praktikan/ulasan',
+                  params: { classId: item.classId, sessionId: item.sessionId },
+                })
+              }
+            />
+          ) : null}
         </Card>
       ))}
 
