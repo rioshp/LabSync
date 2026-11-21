@@ -1,19 +1,19 @@
 # LabSync
 
-Aplikasi React Native untuk praktikum: jadwal kelas, sesi, presensi realtime, izin, dan ulasan. Sprint 2 menggunakan Firebase Authentication, Firestore, dan Firebase Functions. Spesifikasi sprint ada di `Project.md` pada folder induk workspace.
+Aplikasi React Native untuk praktikum: jadwal kelas, sesi, presensi realtime, izin, dan ulasan. Sprint 2 menggunakan Firebase Authentication dan Firestore pada paket Spark. Spesifikasi sprint ada di `Project.md` pada folder induk workspace.
 
 - `src/app` berisi rute Expo Router. Tampilan utama mengikuti tema LabSync di `src/constants/theme.ts`.
 - `src/features` memisahkan alur akademik dan partisipasi.
 - `src/lib` dan `src/hooks` menghubungkan aplikasi ke Auth, listener, dan fungsi mutasi.
-- `functions` berisi backend, worker sentimen, skrip operator, dan tes. Lihat [kontrak backend](functions/README.md).
-- `firestore.rules` dan `firestore.indexes.json` mengikuti skema Sprint 2. Aplikasi membaca melalui Firestore dan mengubah data melalui fungsi `mutate`.
+- `functions/ai` berisi model sentimen yang dipakai aplikasi. `functions/scripts` berisi [skrip administratif](functions/README.md).
+- `firestore.rules` dan `firestore.indexes.json` mengikuti skema Sprint 2. Aplikasi membaca melalui Firestore dan menulis lewat transaksi Firestore yang diperiksa Security Rules.
 
 ## Membaca kode
 
 - Mulai dari URL atau tab di `src/app`. File rute menunjuk ke layar di `src/features`; gaya layar akademik berada di file `.styles.ts` di sebelahnya.
 - Baca `src/features/academic/listeners.ts` untuk alur jadwal. Daftar kelas menentukan listener sesi yang perlu hidup. Perubahan metadata cache hanya mengubah indikator koneksi. Listener sesi lama tidak boleh mengisi kembali kelas yang sudah diarsipkan atau dilepas.
-- Alur baca dan tulis terpisah. Layar mendengarkan Firestore melalui hook dan mengirim perubahan melalui `src/lib/mutations.ts`. Backend memeriksa peran dan kepemilikan sebelum commit.
-- Backend masuk lewat `functions/index.cjs`. `validation.cjs` memvalidasi kontrak input, `domain.cjs` menangani otorisasi dan transaksi, dan `review-worker.cjs` memproses sentimen ulasan. Keputusan izin ada di transaksi asisten.
+- Alur baca dan tulis terpisah. Layar mendengarkan Firestore melalui hook dan mengirim perubahan melalui `src/lib/mutations.ts`. Firestore Security Rules memeriksa peran dan kepemilikan sebelum commit.
+- Fungsi di `src/lib` menangani profil, praktikum, kelas, sesi, peserta, presensi, izin, dan ulasan. Sentimen dihitung di perangkat saat ulasan dikirim.
 
 Konfigurasi format ada di `.prettierrc.json`. Untuk menerapkannya ke sumber, tes, dan konfigurasi JavaScript tanpa menjalankan build:
 
@@ -23,7 +23,7 @@ npx --yes prettier@3.6.2 --write 'src/**/*.{ts,tsx}' 'functions/**/*.{cjs,js}' '
 
 ## Jalankan dan verifikasi
 
-Gunakan versi Node yang didukung Expo dan runtime Functions. Untuk Emulator Suite, siapkan Firebase CLI dan Java 21 atau lebih baru.
+Gunakan versi Node yang didukung Expo. Untuk Emulator Suite, siapkan Firebase CLI dan Java 21 atau lebih baru.
 
 ```sh
 npm ci
@@ -35,15 +35,15 @@ npm test --prefix functions
 npm run test:emulators
 ```
 
-Tes integrasi hanya menerima project ID dengan awalan `demo-`. Ia membuat dua asisten dan dua praktikan pada Auth emulator, menjalankan mutasi sebagai pengguna sebenarnya, dan memeriksa aturan Firestore serta listener dari klien berbeda.
+Tes integrasi hanya menerima project ID dengan awalan `demo-`. Ia membuat dua asisten dan dua praktikan pada Auth emulator, menjalankan modul transaksi yang dipakai aplikasi, dan memeriksa aturan Firestore serta listener dari klien berbeda.
 
-Untuk menjalankan aplikasi, gunakan development build Android, lalu `npx expo start --dev-client`. Aplikasi menggunakan modul native Firebase dan Google sehingga perlu build ulang setelah dependensi native berubah. Untuk menghubungkan build pengembangan ke emulator, salin `.env.example` ke `.env.local`, isi `EXPO_PUBLIC_FIREBASE_EMULATOR_HOST`, dan jalankan Auth, Firestore, dan Functions emulator dengan project ID yang cocok dengan konfigurasi Firebase pada build Android. Android emulator memakai `10.0.2.2`; perangkat fisik memakai IP LAN komputer. Pastikan alamat yang didengar emulator bisa dijangkau perangkat pada jaringan pengujian.
+Untuk menjalankan aplikasi, gunakan development build Android, lalu `npx expo start --dev-client`. Aplikasi menggunakan modul native Firebase dan Google sehingga perlu build ulang setelah dependensi native berubah. Untuk menghubungkan build pengembangan ke emulator, salin `.env.example` ke `.env.local`, isi `EXPO_PUBLIC_FIREBASE_EMULATOR_HOST`, dan jalankan Auth dan Firestore emulator dengan project ID yang cocok dengan konfigurasi Firebase pada build Android. Android emulator memakai `10.0.2.2`; perangkat fisik memakai IP LAN komputer. Pastikan alamat yang didengar emulator bisa dijangkau perangkat pada jaringan pengujian.
 
 ## Akun demo untuk pengujian
 
 Tombol **Demo** di kanan layar masuk development build mengisi email dan password saja. Tekan **Masuk** untuk login ke proyek Firebase yang dipakai aplikasi. Peran tetap ditentukan oleh profil Firebase.
 
-1. Siapkan dua akun uji di Firebase Authentication dengan email terverifikasi dan profil aktif. Beri peran praktikan pada satu akun dan asisten pada akun lainnya melalui operator. Gunakan kelas dan data uji yang terpisah dari kelas nyata.
+1. Siapkan dua akun uji di Firebase Authentication dengan email terverifikasi dan profil aktif. Lengkapi profil praktikan di aplikasi dan buat profil asisten melalui [skrip administratif](functions/README.md). Gunakan kelas dan data uji yang terpisah dari kelas nyata.
 2. Isi empat variabel `EXPO_PUBLIC_DEMO_*` dari `.env.example` di `.env.local`. Kosongkan `EXPO_PUBLIC_FIREBASE_EMULATOR_HOST` untuk login ke Firebase aktif, lalu mulai ulang Metro.
 3. Simpan kredensial akun uji hanya untuk development. Nilai `EXPO_PUBLIC_*` dapat dibaca dari bundle development, jadi gunakan akun dummy dan jangan masukkan preset ke konfigurasi rilis atau akun pribadi.
 
@@ -52,10 +52,24 @@ Tombol **Demo** di kanan layar masuk development build mengisi email dan passwor
 1. Aktifkan provider Email/Password dan Google di Firebase Authentication untuk proyek pengujian.
 2. Daftarkan SHA-1 build Android pada aplikasi Firebase yang cocok dengan package. Sertifikat development, APK yang didistribusikan, dan Play App Signing dapat berbeda.
 3. Ambil ulang `google-services.json` dari proyek yang sama; aplikasi menggunakan OAuth **Web client ID** dari konfigurasi tersebut. Gunakan `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` hanya bila integrasi build memerlukan override. Nilai ini adalah ID, bukan client secret.
-4. Buat development atau preview build baru. Pada build itu, uji akun Google baru, masuk ulang dengan akun yang sama, pembatalan, dan linking setelah konflik penyedia.
+4. Uji akun Google baru, masuk ulang dengan akun yang sama, pembatalan, dan linking setelah konflik penyedia. Development build yang sudah memuat modul native Firebase dan Google bisa menjalankan JavaScript terbaru dari Metro.
 5. Jika menargetkan iOS, daftarkan aplikasi iOS di Firebase dan siapkan bundle ID, `GoogleService-Info.plist`, dan URL scheme OAuth iOS sebelum membuat build iOS.
 
-APK yang memakai Firebase production baru boleh dipakai setelah backend, aturan dan indeks skema Sprint 2 tersedia pada proyek yang dipakai APK. Deployment Functions generasi kedua memerlukan proyek dengan billing yang mendukung layanan tersebut. Uji deployment dan data pada proyek staging sebelum memilih jadwal perubahan untuk proyek aktif. Rules ini memblokir penulisan langsung dari klien lama dan koleksi sesi baru berada di bawah kelas; data dengan skema lama tidak otomatis dipindahkan. Tentukan migrasi/backup dan verifikasi akun asisten lewat jalur operator sebelum rollout ke proyek yang sudah punya data.
+## Profil akun
+
+Tab **Profil** menampilkan email serta metode masuk yang terhubung. Semua pengguna dapat mengedit nama. Praktikan juga dapat mengubah NIM. Firestore memindahkan klaim NIM dalam satu transaksi sehingga satu NIM hanya dimiliki satu akun.
+
+Akun Google yang belum memiliki password dapat memilih **Tambahkan password**. Firebase menautkannya ke email dan UID yang sama. Setelah itu, pengguna bisa masuk dengan Google atau email dan password.
+
+## Terapkan ke Firebase
+
+Jalankan dari direktori aplikasi dengan Firebase CLI yang sudah login:
+
+```sh
+firebase deploy --only firestore:rules,firestore:indexes --project ppk-praktikum-2026-b0df4
+```
+
+Aturan ini memakai skema Sprint 2. Data lama yang memakai nama field atau path sesi berbeda perlu migrasi sebelum dipakai di aplikasi. Tunggu indeks siap sebelum menguji jadwal, rekap, dan riwayat. Untuk development build yang kompatibel, jalankan `npx expo start --dev-client` dengan `EXPO_PUBLIC_FIREBASE_EMULATOR_HOST` kosong agar perangkat memakai Firebase aktif.
 
 ## Demo penerimaan
 
