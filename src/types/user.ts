@@ -5,7 +5,5 @@ type Profile = {
   accountStatus: 'active' | 'disabled';
 };
 
-export type UserProfile = Profile & (
-  | { role: 'asisten'; nim: null }
-  | { role: 'praktikan'; nim: string }
-);
+export type UserProfile = Profile &
+  ({ role: 'asisten'; nim: null } | { role: 'praktikan'; nim: string });

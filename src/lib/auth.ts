@@ -1,7 +1,16 @@
 import {
-  createUserWithEmailAndPassword, getIdToken, GoogleAuthProvider, linkWithCredential,
-  reload, sendEmailVerification, sendPasswordResetEmail, signInWithCredential,
-  signInWithEmailAndPassword, signOut, type AuthCredential, type User,
+  createUserWithEmailAndPassword,
+  getIdToken,
+  GoogleAuthProvider,
+  linkWithCredential,
+  reload,
+  sendEmailVerification,
+  sendPasswordResetEmail,
+  signInWithCredential,
+  signInWithEmailAndPassword,
+  signOut,
+  type AuthCredential,
+  type User,
 } from '@react-native-firebase/auth';
 import { Platform } from 'react-native';
 
@@ -67,17 +76,26 @@ export async function logout() {
 
 export async function getGoogleCredential() {
   if (Platform.OS === 'web') throw new Error('Gunakan build perangkat untuk masuk dengan Google.');
-  const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID
-    || googleServices.client.flatMap((client) => client.oauth_client ?? [])
+  const webClientId =
+    process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
+    googleServices.client
+      .flatMap((client) => client.oauth_client ?? [])
       .find((client) => client.client_type === 3)?.client_id;
   if (!webClientId) throw new Error('Google Sign-In belum dikonfigurasi untuk build ini.');
-  const { GoogleSignin, isSuccessResponse } = await import('@react-native-google-signin/google-signin');
+  const { GoogleSignin, isSuccessResponse } = await import(
+    '@react-native-google-signin/google-signin'
+  );
   GoogleSignin.configure({ webClientId });
-  if (Platform.OS === 'android') await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+  if (Platform.OS === 'android')
+    await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
   const result = await GoogleSignin.signIn();
   if (!isSuccessResponse(result)) return null;
-  if (!result.data.idToken) throw new Error('Google tidak mengembalikan kredensial yang dapat digunakan.');
-  return { credential: GoogleAuthProvider.credential(result.data.idToken), email: result.data.user.email };
+  if (!result.data.idToken)
+    throw new Error('Google tidak mengembalikan kredensial yang dapat digunakan.');
+  return {
+    credential: GoogleAuthProvider.credential(result.data.idToken),
+    email: result.data.user.email,
+  };
 }
 
 export async function loginWithGoogle(credential: AuthCredential) {
@@ -86,11 +104,20 @@ export async function loginWithGoogle(credential: AuthCredential) {
 }
 
 export function parseUserProfile(data: Record<string, unknown> | undefined): UserProfile | null {
-  if (!data || typeof data.displayName !== 'string' || !data.displayName.trim()
-      || (data.accountStatus !== 'active' && data.accountStatus !== 'disabled')) return null;
+  if (
+    !data ||
+    typeof data.displayName !== 'string' ||
+    !data.displayName.trim() ||
+    (data.accountStatus !== 'active' && data.accountStatus !== 'disabled')
+  )
+    return null;
   const { displayName, accountStatus } = data;
-  const profile: Pick<UserProfile, 'displayName' | 'accountStatus'> = { displayName, accountStatus };
-  if (data.role === 'asisten' && data.nim === null) return { ...profile, role: 'asisten', nim: null };
+  const profile: Pick<UserProfile, 'displayName' | 'accountStatus'> = {
+    displayName,
+    accountStatus,
+  };
+  if (data.role === 'asisten' && data.nim === null)
+    return { ...profile, role: 'asisten', nim: null };
   if (data.role === 'praktikan' && typeof data.nim === 'string' && data.nim.trim()) {
     return { ...profile, role: 'praktikan', nim: data.nim };
   }
@@ -98,26 +125,39 @@ export function parseUserProfile(data: Record<string, unknown> | undefined): Use
 }
 
 export function authCode(error: unknown) {
-  return error && typeof error === 'object' && 'code' in error ? String(error.code).split('/').pop() : '';
+  return error && typeof error === 'object' && 'code' in error
+    ? String(error.code).split('/').pop()
+    : '';
 }
 
 export function getAuthErrorMessage(error: unknown): string {
   switch (authCode(error)) {
-    case 'email-already-in-use': return 'Email sudah terdaftar. Silakan masuk.';
-    case 'invalid-email': return 'Format email tidak valid.';
-    case 'weak-password': return 'Password belum memenuhi persyaratan keamanan.';
+    case 'email-already-in-use':
+      return 'Email sudah terdaftar. Silakan masuk.';
+    case 'invalid-email':
+      return 'Format email tidak valid.';
+    case 'weak-password':
+      return 'Password belum memenuhi persyaratan keamanan.';
     case 'user-not-found':
     case 'wrong-password':
-    case 'invalid-credential': return 'Kredensial tidak valid. Periksa login dan coba lagi.';
-    case 'user-disabled': return 'Akun dinonaktifkan. Hubungi pengelola.';
-    case 'too-many-requests': return 'Terlalu banyak percobaan. Silakan coba lagi nanti.';
+    case 'invalid-credential':
+      return 'Kredensial tidak valid. Periksa login dan coba lagi.';
+    case 'user-disabled':
+      return 'Akun dinonaktifkan. Hubungi pengelola.';
+    case 'too-many-requests':
+      return 'Terlalu banyak percobaan. Silakan coba lagi nanti.';
     case 'network-request-failed':
-    case 'unavailable': return 'Tidak dapat terhubung. Periksa koneksi internet dan coba lagi.';
-    case 'permission-denied': return 'Akses profil ditolak. Hubungi pengelola.';
-    case 'operation-not-allowed': return 'Metode masuk ini belum diaktifkan oleh pengelola.';
-    case 'credential-already-in-use': return 'Akun Google ini sudah terhubung ke akun lain. Hubungi pengelola.';
-    default: return error instanceof Error && !authCode(error)
-      ? error.message
-      : 'Terjadi kesalahan. Silakan coba lagi.';
+    case 'unavailable':
+      return 'Tidak dapat terhubung. Periksa koneksi internet dan coba lagi.';
+    case 'permission-denied':
+      return 'Akses profil ditolak. Hubungi pengelola.';
+    case 'operation-not-allowed':
+      return 'Metode masuk ini belum diaktifkan oleh pengelola.';
+    case 'credential-already-in-use':
+      return 'Akun Google ini sudah terhubung ke akun lain. Hubungi pengelola.';
+    default:
+      return error instanceof Error && !authCode(error)
+        ? error.message
+        : 'Terjadi kesalahan. Silakan coba lagi.';
   }
 }

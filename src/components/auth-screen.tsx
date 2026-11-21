@@ -17,7 +17,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BrandColors } from '@/constants/theme';
 
-export function AuthScreen({ title, description, children, intro = false }: {
+export function AuthScreen({
+  title,
+  description,
+  children,
+  intro = false,
+}: {
   title: string;
   description: string;
   children: ReactNode;
@@ -44,18 +49,23 @@ export function AuthScreen({ title, description, children, intro = false }: {
   }, [intro, introProgress]);
 
   return (
-    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView
+      style={styles.screen}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       <Animated.View
         style={[styles.page, { opacity: introProgress }]}
         pointerEvents={showIntro ? 'none' : 'auto'}
         accessibilityElementsHidden={showIntro}
-        importantForAccessibility={showIntro ? 'no-hide-descendants' : 'auto'}>
+        importantForAccessibility={showIntro ? 'no-hide-descendants' : 'auto'}
+      >
         <View
           pointerEvents="none"
           accessible={false}
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
-          style={styles.background}>
+          style={styles.background}
+        >
           <View style={styles.backgroundTop} />
           <View style={styles.backgroundSide} />
           <View style={styles.backgroundBottom} />
@@ -73,9 +83,12 @@ export function AuthScreen({ title, description, children, intro = false }: {
           contentContainerStyle={[
             styles.content,
             { paddingTop: insets.top + 78, paddingBottom: insets.bottom + 32 },
-          ]}>
+          ]}
+        >
           <View style={styles.hero}>
-            <Text accessibilityRole="header" style={styles.title}>{title}</Text>
+            <Text accessibilityRole="header" style={styles.title}>
+              {title}
+            </Text>
             <Text style={styles.description}>{description}</Text>
           </View>
           {children}
@@ -88,7 +101,8 @@ export function AuthScreen({ title, description, children, intro = false }: {
             { opacity: introProgress.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) },
           ]}
           accessibilityLabel="Memuat presensi praktikum"
-          accessibilityRole="progressbar">
+          accessibilityRole="progressbar"
+        >
           <View style={styles.introMark}>
             {[0, 1, 2, 3].map((block) => (
               <Animated.View
@@ -127,30 +141,55 @@ export function AuthField({ label, ...props }: TextInputProps & { label: string 
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
-      <TextInput accessibilityLabel={label} placeholderTextColor={BrandColors.muted} {...props} style={styles.input} />
+      <TextInput
+        accessibilityLabel={label}
+        placeholderTextColor={BrandColors.muted}
+        {...props}
+        style={styles.input}
+      />
     </View>
   );
 }
 
-export function AuthButton({ title, onPress, busy = false, disabled = false }: {
+export function AuthButton({
+  title,
+  onPress,
+  busy = false,
+  disabled = false,
+}: {
   title: string;
   onPress: () => void;
   busy?: boolean;
   disabled?: boolean;
 }) {
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={title}
-      accessibilityState={{ disabled: busy || disabled, busy }} disabled={busy || disabled}
-      onPress={onPress} style={({ pressed }) => [
-        styles.submit, (busy || disabled) && styles.disabledSubmit, pressed && styles.pressed,
-      ]}>
-      {busy ? <ActivityIndicator color={BrandColors.paper} /> : <Text style={styles.submitText}>{title}</Text>}
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      accessibilityState={{ disabled: busy || disabled, busy }}
+      disabled={busy || disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.submit,
+        (busy || disabled) && styles.disabledSubmit,
+        pressed && styles.pressed,
+      ]}
+    >
+      {busy ? (
+        <ActivityIndicator color={BrandColors.paper} />
+      ) : (
+        <Text style={styles.submitText}>{title}</Text>
+      )}
     </Pressable>
   );
 }
 
 export function AuthError({ message }: { message: string | null }) {
-  return message ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.error}>{message}</Text> : null;
+  return message ? (
+    <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.error}>
+      {message}
+    </Text>
+  ) : null;
 }
 
 const styles = StyleSheet.create({

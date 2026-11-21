@@ -58,10 +58,12 @@ class FakeQuery {
   }
 
   where(field, operator, value) {
-    return new FakeQuery(this.db, this.collectionName, [
-      ...this.filters,
-      { field, operator, value },
-    ], this.maximum);
+    return new FakeQuery(
+      this.db,
+      this.collectionName,
+      [...this.filters, { field, operator, value }],
+      this.maximum,
+    );
   }
 
   limit(maximum) {
@@ -69,19 +71,21 @@ class FakeQuery {
   }
 
   async get() {
-    const rows = this.db.all(this.collectionName).filter(({ value }) =>
-      this.filters.every(({ field, operator, value: expected }) => {
-        const actual = value[field];
-        if (operator === '==') return actual === expected;
-        if (operator === '<=') {
-          const actualMillis = timestampMillis(actual);
-          const expectedMillis = timestampMillis(expected);
-          return actualMillis != null && expectedMillis != null
-            && actualMillis <= expectedMillis;
-        }
-        throw new Error(`Unsupported query operator: ${operator}`);
-      }),
-    ).slice(0, this.maximum);
+    const rows = this.db
+      .all(this.collectionName)
+      .filter(({ value }) =>
+        this.filters.every(({ field, operator, value: expected }) => {
+          const actual = value[field];
+          if (operator === '==') return actual === expected;
+          if (operator === '<=') {
+            const actualMillis = timestampMillis(actual);
+            const expectedMillis = timestampMillis(expected);
+            return actualMillis != null && expectedMillis != null && actualMillis <= expectedMillis;
+          }
+          throw new Error(`Unsupported query operator: ${operator}`);
+        }),
+      )
+      .slice(0, this.maximum);
     return { docs: rows.map(({ id, value }) => new FakeSnapshot(id, value)) };
   }
 }
@@ -226,8 +230,12 @@ function createHarness({ classify, config = {} } = {}) {
     logs,
     seedReview,
     worker,
-    get currentTime() { return currentTime; },
-    advanceTime(milliseconds) { currentTime += milliseconds; },
+    get currentTime() {
+      return currentTime;
+    },
+    advanceTime(milliseconds) {
+      currentTime += milliseconds;
+    },
   };
 }
 
@@ -357,7 +365,11 @@ test('transient model errors back off and the scheduled scan resumes due work', 
 });
 
 test('three transient failures produce one terminal failure count', async () => {
-  const harness = createHarness({ classify: () => { throw new Error('temporary outage'); } });
+  const harness = createHarness({
+    classify: () => {
+      throw new Error('temporary outage');
+    },
+  });
   const reviewId = harness.seedReview();
 
   const first = await harness.worker.handleReviewJobEvent({
@@ -372,7 +384,10 @@ test('three transient failures produce one terminal failure count', async () => 
   assert.equal(secondScan.found, 1);
   assert.equal(harness.db.read('reviewJobs', reviewId).attemptCount, 2);
   assert.equal(harness.db.read('reviewJobs', reviewId).state, 'pending');
-  assert.equal(timestampMillis(harness.db.read('reviewJobs', reviewId).nextAttemptAt), harness.currentTime + 60_000);
+  assert.equal(
+    timestampMillis(harness.db.read('reviewJobs', reviewId).nextAttemptAt),
+    harness.currentTime + 60_000,
+  );
 
   harness.advanceTime(60_001);
   const thirdScan = await harness.worker.retryDueReviewJobs();
@@ -387,8 +402,12 @@ test('three transient failures produce one terminal failure count', async () => 
 test('an expired lease can be reclaimed and a stale attempt cannot overwrite its result', async () => {
   let markFirstStarted;
   let releaseFirst;
-  const firstStarted = new Promise((resolve) => { markFirstStarted = resolve; });
-  const firstResult = new Promise((resolve) => { releaseFirst = resolve; });
+  const firstStarted = new Promise((resolve) => {
+    markFirstStarted = resolve;
+  });
+  const firstResult = new Promise((resolve) => {
+    releaseFirst = resolve;
+  });
   let calls = 0;
   const harness = createHarness({
     classify: async () => {

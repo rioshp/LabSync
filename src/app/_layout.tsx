@@ -3,7 +3,11 @@ import { Stack } from 'expo-router';
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
 
 export default function RootLayout() {
-  return <AuthProvider><RootNavigator /></AuthProvider>;
+  return (
+    <AuthProvider>
+      <RootNavigator />
+    </AuthProvider>
+  );
 }
 
 function RootNavigator() {

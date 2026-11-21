@@ -25,7 +25,10 @@ function idPair(left, right) {
 function canonical(value) {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
   if (value && typeof value === 'object') {
-    return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`).join(',')}}`;
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonical(value[key])}`)
+      .join(',')}}`;
   }
   return JSON.stringify(value);
 }
@@ -51,7 +54,8 @@ function snapshotFor(classData, sessionData) {
 }
 
 function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date.now() }) {
-  if (!db || !FieldValue || !Timestamp) throw new TypeError('db, FieldValue, and Timestamp are required.');
+  if (!db || !FieldValue || !Timestamp)
+    throw new TypeError('db, FieldValue, and Timestamp are required.');
   const serverTimestamp = () => FieldValue.serverTimestamp();
   const users = db.collection('users');
   const practicums = db.collection('practicums');
@@ -64,7 +68,8 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
   const reviewSummaries = db.collection('reviewSummaries');
 
   function activeProfile(profileSnap, uid) {
-    if (!profileSnap.exists) error('failed-precondition', 'Complete account onboarding before continuing.');
+    if (!profileSnap.exists)
+      error('failed-precondition', 'Complete account onboarding before continuing.');
     const profile = profileSnap.data();
     if (profile.accountStatus !== 'active') error('permission-denied', 'This account is disabled.');
     if (profile.role !== 'praktikan' && profile.role !== 'asisten') {
@@ -82,14 +87,16 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
   async function requireAssistant(tx, uid) {
     const snap = await tx.get(users.doc(uid));
     const profile = activeProfile(snap, uid);
-    if (profile.role !== 'asisten') error('permission-denied', 'An active assistant account is required.');
+    if (profile.role !== 'asisten')
+      error('permission-denied', 'An active assistant account is required.');
     return profile;
   }
 
   async function requireStudent(tx, uid) {
     const snap = await tx.get(users.doc(uid));
     const profile = activeProfile(snap, uid);
-    if (profile.role !== 'praktikan') error('permission-denied', 'An active student account is required.');
+    if (profile.role !== 'praktikan')
+      error('permission-denied', 'An active student account is required.');
     return profile;
   }
 
@@ -98,8 +105,10 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
     const snap = await tx.get(classRef);
     if (!snap.exists) error('not-found', 'Class not found.');
     const classData = snap.data();
-    if (classData.assistantUid !== uid) error('permission-denied', 'This class belongs to another assistant.');
-    if (activeOnly && classData.status !== 'active') error('failed-precondition', 'This class is archived.');
+    if (classData.assistantUid !== uid)
+      error('permission-denied', 'This class belongs to another assistant.');
+    if (activeOnly && classData.status !== 'active')
+      error('failed-precondition', 'This class is archived.');
     return { ref: classRef, data: classData };
   }
 
@@ -108,15 +117,18 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
     const snap = await tx.get(practicumRef);
     if (!snap.exists) error('not-found', 'Practicum not found.');
     const data = snap.data();
-    if (data.assistantUid !== uid) error('permission-denied', 'This practicum belongs to another assistant.');
-    if (activeOnly && data.status !== 'active') error('failed-precondition', 'This practicum is archived.');
+    if (data.assistantUid !== uid)
+      error('permission-denied', 'This practicum belongs to another assistant.');
+    if (activeOnly && data.status !== 'active')
+      error('failed-precondition', 'This practicum is archived.');
     return { ref: practicumRef, data };
   }
 
   // A retry receipt is written in the same transaction as the new document.
   function requestRef(uid, requestId) {
     const id = requiredString(requestId, 'requestId', 1, 128);
-    if (!/^[A-Za-z0-9_-]+$/.test(id)) error('invalid-argument', 'requestId contains invalid characters.');
+    if (!/^[A-Za-z0-9_-]+$/.test(id))
+      error('invalid-argument', 'requestId contains invalid characters.');
     return db.collection('mutationRequests').doc(uid).collection('items').doc(id);
   }
 
@@ -125,13 +137,20 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
     if (!snap.exists) return null;
     const prior = snap.data();
     if (prior.operation !== operation || prior.payloadDigest !== payloadDigest) {
-      error('already-exists', 'This requestId was already used for a different operation or input.');
+      error(
+        'already-exists',
+        'This requestId was already used for a different operation or input.',
+      );
     }
     const expiresAt = prior.expiresAt;
     if (expiresAt && typeof expiresAt.toMillis === 'function' && expiresAt.toMillis() <= now()) {
-      error('failed-precondition', 'This requestId expired. Start a new request with a new requestId.');
+      error(
+        'failed-precondition',
+        'This requestId expired. Start a new request with a new requestId.',
+      );
     }
-    const resultId = typeof prior.resultPath === 'string' ? prior.resultPath.split('/').at(-1) : null;
+    const resultId =
+      typeof prior.resultPath === 'string' ? prior.resultPath.split('/').at(-1) : null;
     if (!resultId) error('internal', 'The saved request receipt is invalid.');
     return { id: resultId };
   }
@@ -149,7 +168,8 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
   async function completeProfile(input, auth) {
     assertAllowedKeys(input, ['action', 'displayName', 'nim']);
     const uid = auth.uid;
-    if (auth.token?.email_verified !== true) error('failed-precondition', 'Verify your email before completing onboarding.');
+    if (auth.token?.email_verified !== true)
+      error('failed-precondition', 'Verify your email before completing onboarding.');
     const displayName = requiredString(input.displayName, 'displayName', 1, 100);
     const nim = normalizeNim(input.nim);
     const userRef = users.doc(uid);
@@ -158,12 +178,18 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
       const [userSnap, keySnap] = await Promise.all([tx.get(userRef), tx.get(keyRef)]);
       if (userSnap.exists) {
         const current = userSnap.data();
-        if (current.role === 'praktikan' && current.accountStatus === 'active' && current.displayName === displayName && current.nim === nim) {
+        if (
+          current.role === 'praktikan' &&
+          current.accountStatus === 'active' &&
+          current.displayName === displayName &&
+          current.nim === nim
+        ) {
           if (keySnap.exists && keySnap.data().studentUid === uid) return { completed: true };
         }
         error('failed-precondition', 'This account already has a profile.');
       }
-      if (keySnap.exists && keySnap.data().studentUid !== uid) error('already-exists', 'That NIM is already registered.');
+      if (keySnap.exists && keySnap.data().studentUid !== uid)
+        error('already-exists', 'That NIM is already registered.');
       const timestamp = serverTimestamp();
       tx.create(userRef, {
         displayName,
@@ -211,11 +237,15 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
     return db.runTransaction(async (tx) => {
       await requireAssistant(tx, uid);
       const { ref, data } = await requireOwnedPracticum(tx, practicumId, uid);
-      const classesQuery = classes.where('practicumId', '==', practicumId).limit(MAX_CLASSES_PER_PRACTICUM + 1);
+      const classesQuery = classes
+        .where('practicumId', '==', practicumId)
+        .limit(MAX_CLASSES_PER_PRACTICUM + 1);
       const classesSnap = await tx.get(classesQuery);
-      if (classesSnap.size > MAX_CLASSES_PER_PRACTICUM) error('failed-precondition', 'This practicum exceeds its class limit.');
+      if (classesSnap.size > MAX_CLASSES_PER_PRACTICUM)
+        error('failed-precondition', 'This practicum exceeds its class limit.');
       tx.update(ref, { name, updatedAt: serverTimestamp() });
-      for (const classSnap of classesSnap.docs) tx.update(classSnap.ref, { practicumName: name, updatedAt: serverTimestamp() });
+      for (const classSnap of classesSnap.docs)
+        tx.update(classSnap.ref, { practicumName: name, updatedAt: serverTimestamp() });
       return { updated: data.name !== name };
     });
   }
@@ -226,8 +256,13 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
     return db.runTransaction(async (tx) => {
       await requireAssistant(tx, uid);
       const { ref, data } = await requireOwnedPracticum(tx, practicumId, uid);
-      if (data.activeClassCount !== 0) error('failed-precondition', 'Archive active classes before archiving this practicum.');
-      tx.update(ref, { status: 'archived', archivedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      if (data.activeClassCount !== 0)
+        error('failed-precondition', 'Archive active classes before archiving this practicum.');
+      tx.update(ref, {
+        status: 'archived',
+        archivedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
       return { archived: true };
     });
   }
@@ -245,7 +280,8 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
       const prior = await priorRequest(tx, receipt, 'createClass', payloadDigest);
       if (prior) return prior;
       const { ref: practicumRef, data } = await requireOwnedPracticum(tx, practicumId, uid);
-      if (data.totalClassCount >= MAX_CLASSES_PER_PRACTICUM) error('failed-precondition', 'This practicum has reached the 100-class limit.');
+      if (data.totalClassCount >= MAX_CLASSES_PER_PRACTICUM)
+        error('failed-precondition', 'This practicum has reached the 100-class limit.');
       tx.create(ref, {
         practicumId,
         practicumName: data.name,
@@ -277,7 +313,8 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
       await requireAssistant(tx, uid);
       const { ref, data } = await requireOwnedClass(tx, classId, uid);
       const practicumSnap = await tx.get(practicums.doc(data.practicumId));
-      if (!practicumSnap.exists || practicumSnap.data().status !== 'active') error('failed-precondition', 'This class practicum is not active.');
+      if (!practicumSnap.exists || practicumSnap.data().status !== 'active')
+        error('failed-precondition', 'This class practicum is not active.');
       tx.update(ref, { name, timeZone, updatedAt: serverTimestamp() });
       return { updated: true };
     });
@@ -289,15 +326,29 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
     return db.runTransaction(async (tx) => {
       await requireAssistant(tx, uid);
       const { ref, data } = await requireOwnedClass(tx, classId, uid);
-      if ((data.unfinishedSessionCount || 0) > 0) error('failed-precondition', 'Finish or cancel unfinished sessions before archiving this class.');
+      if ((data.unfinishedSessionCount || 0) > 0)
+        error(
+          'failed-precondition',
+          'Finish or cancel unfinished sessions before archiving this class.',
+        );
       const practicumRef = practicums.doc(data.practicumId);
       const practicumSnap = await tx.get(practicumRef);
-      if (!practicumSnap.exists || practicumSnap.data().assistantUid !== uid) error('failed-precondition', 'Parent practicum is unavailable.');
+      if (!practicumSnap.exists || practicumSnap.data().assistantUid !== uid)
+        error('failed-precondition', 'Parent practicum is unavailable.');
       const practicum = practicumSnap.data();
-      if (practicum.status !== 'active') error('failed-precondition', 'Parent practicum is archived.');
-      if ((practicum.activeClassCount || 0) < 1) error('internal', 'The active class counter is inconsistent.');
-      tx.update(ref, { status: 'archived', archivedAt: serverTimestamp(), updatedAt: serverTimestamp() });
-      tx.update(practicumRef, { activeClassCount: practicum.activeClassCount - 1, updatedAt: serverTimestamp() });
+      if (practicum.status !== 'active')
+        error('failed-precondition', 'Parent practicum is archived.');
+      if ((practicum.activeClassCount || 0) < 1)
+        error('internal', 'The active class counter is inconsistent.');
+      tx.update(ref, {
+        status: 'archived',
+        archivedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+      tx.update(practicumRef, {
+        activeClassCount: practicum.activeClassCount - 1,
+        updatedAt: serverTimestamp(),
+      });
       return { archived: true };
     });
   }
@@ -312,7 +363,8 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
       await requireAssistant(tx, uid);
       const { data: classData } = await requireOwnedClass(tx, classId, uid);
       const practicumSnap = await tx.get(practicums.doc(classData.practicumId));
-      if (!practicumSnap.exists || practicumSnap.data().status !== 'active') error('failed-precondition', 'This class practicum is not active.');
+      if (!practicumSnap.exists || practicumSnap.data().status !== 'active')
+        error('failed-precondition', 'This class practicum is not active.');
       const [limitSnap, keySnap] = await Promise.all([tx.get(limitRef), tx.get(keyRef)]);
       let studentSnap = null;
       let studentUid = null;
@@ -322,8 +374,12 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
       }
       const currentTime = now();
       const priorLimit = limitSnap.exists ? limitSnap.data() : null;
-      const inWindow = priorLimit && currentTime - priorLimit.windowStartedAt <= LOOKUP_WINDOW_MS && currentTime >= priorLimit.windowStartedAt;
-      if (inWindow && priorLimit.count >= LOOKUP_LIMIT) error('resource-exhausted', 'Student lookup limit reached. Try again in one minute.');
+      const inWindow =
+        priorLimit &&
+        currentTime - priorLimit.windowStartedAt <= LOOKUP_WINDOW_MS &&
+        currentTime >= priorLimit.windowStartedAt;
+      if (inWindow && priorLimit.count >= LOOKUP_LIMIT)
+        error('resource-exhausted', 'Student lookup limit reached. Try again in one minute.');
       tx.set(limitRef, {
         windowStartedAt: inWindow ? priorLimit.windowStartedAt : currentTime,
         count: inWindow ? priorLimit.count + 1 : 1,
@@ -332,7 +388,11 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
       if (!keySnap.exists) return { studentUid: null, displayName: null, nim: null };
       if (!studentSnap?.exists) return { studentUid: null, displayName: null, nim: null };
       const student = studentSnap.data();
-      if (student.role !== 'praktikan' || student.accountStatus !== 'active' || normalizeNim(student.nim) !== nim) {
+      if (
+        student.role !== 'praktikan' ||
+        student.accountStatus !== 'active' ||
+        normalizeNim(student.nim) !== nim
+      ) {
         return { studentUid: null, displayName: null, nim: null };
       }
       return { studentUid, displayName: student.displayName, nim: student.nim };
@@ -348,7 +408,8 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
       await requireAssistant(tx, uid);
       const { data: classData } = await requireOwnedClass(tx, classId, uid);
       const practicumSnap = await tx.get(practicums.doc(classData.practicumId));
-      if (!practicumSnap.exists || practicumSnap.data().status !== 'active') error('failed-precondition', 'This class practicum is not active.');
+      if (!practicumSnap.exists || practicumSnap.data().status !== 'active')
+        error('failed-precondition', 'This class practicum is not active.');
       const keySnap = await tx.get(keyRef);
       if (!keySnap.exists) error('not-found', 'No active student account matches that NIM.');
       const studentUid = keySnap.data().studentUid;
@@ -356,12 +417,17 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
       const studentSnap = await tx.get(userRef);
       if (!studentSnap.exists) error('not-found', 'No active student account matches that NIM.');
       const student = studentSnap.data();
-      if (student.role !== 'praktikan' || student.accountStatus !== 'active' || normalizeNim(student.nim) !== nim) {
+      if (
+        student.role !== 'praktikan' ||
+        student.accountStatus !== 'active' ||
+        normalizeNim(student.nim) !== nim
+      ) {
         error('not-found', 'No active student account matches that NIM.');
       }
       const actualEnrollmentRef = enrollments.doc(idPair(classId, studentUid));
       const enrollmentSnap = await tx.get(actualEnrollmentRef);
-      if (enrollmentSnap.exists && enrollmentSnap.data().status === 'active') return { studentUid, added: false };
+      if (enrollmentSnap.exists && enrollmentSnap.data().status === 'active')
+        return { studentUid, added: false };
       const timestamp = serverTimestamp();
       tx.set(actualEnrollmentRef, {
         classId,
@@ -390,16 +456,34 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
       if (!snap.exists) error('not-found', 'Class membership not found.');
       const current = snap.data();
       if (current.status === 'removed') return { removed: false };
-      tx.update(ref, { status: 'removed', removedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      tx.update(ref, {
+        status: 'removed',
+        removedAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
       return { removed: true };
     });
   }
 
   async function createSession(input, uid) {
-    assertAllowedKeys(input, ['action', 'classId', 'moduleTitle', 'room', 'startsAt', 'endsAt', 'requestId']);
+    assertAllowedKeys(input, [
+      'action',
+      'classId',
+      'moduleTitle',
+      'room',
+      'startsAt',
+      'endsAt',
+      'requestId',
+    ]);
     const classId = documentId(input.classId, 'classId');
     const schedule = validateSchedule(input, Timestamp);
-    const payloadDigest = digest({ classId, moduleTitle: schedule.moduleTitle, room: schedule.room, startsAt: schedule.startsAt.toMillis(), endsAt: schedule.endsAt.toMillis() });
+    const payloadDigest = digest({
+      classId,
+      moduleTitle: schedule.moduleTitle,
+      room: schedule.room,
+      startsAt: schedule.startsAt.toMillis(),
+      endsAt: schedule.endsAt.toMillis(),
+    });
     const receipt = requestRef(uid, input.requestId);
     const ref = classes.doc(classId).collection('sessions').doc();
     return db.runTransaction(async (tx) => {
@@ -408,7 +492,8 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
       if (prior) return prior;
       const { data: classData } = await requireOwnedClass(tx, classId, uid);
       const practicumSnap = await tx.get(practicums.doc(classData.practicumId));
-      if (!practicumSnap.exists || practicumSnap.data().status !== 'active') error('failed-precondition', 'This class practicum is not active.');
+      if (!practicumSnap.exists || practicumSnap.data().status !== 'active')
+        error('failed-precondition', 'This class practicum is not active.');
       tx.create(ref, {
         assistantUid: uid,
         moduleTitle: schedule.moduleTitle,
@@ -424,14 +509,25 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
         updatedAt: serverTimestamp(),
       });
       const classRef = classes.doc(classId);
-      tx.update(classRef, { unfinishedSessionCount: (classData.unfinishedSessionCount || 0) + 1, updatedAt: serverTimestamp() });
+      tx.update(classRef, {
+        unfinishedSessionCount: (classData.unfinishedSessionCount || 0) + 1,
+        updatedAt: serverTimestamp(),
+      });
       saveRequest(tx, receipt, 'createSession', payloadDigest, ref);
       return { id: ref.id };
     });
   }
 
   async function updateSession(input, uid) {
-    assertAllowedKeys(input, ['action', 'classId', 'sessionId', 'moduleTitle', 'room', 'startsAt', 'endsAt']);
+    assertAllowedKeys(input, [
+      'action',
+      'classId',
+      'sessionId',
+      'moduleTitle',
+      'room',
+      'startsAt',
+      'endsAt',
+    ]);
     const classId = documentId(input.classId, 'classId');
     const sessionId = documentId(input.sessionId, 'sessionId');
     const schedule = validateSchedule(input, Timestamp);
@@ -442,8 +538,10 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
       const sessionSnap = await tx.get(sessionRef);
       if (!sessionSnap.exists) error('not-found', 'Session not found.');
       const session = sessionSnap.data();
-      if (session.assistantUid !== uid) error('permission-denied', 'This session belongs to another assistant.');
-      if (session.status !== 'scheduled') error('failed-precondition', 'Only scheduled sessions can be edited.');
+      if (session.assistantUid !== uid)
+        error('permission-denied', 'This session belongs to another assistant.');
+      if (session.status !== 'scheduled')
+        error('failed-precondition', 'Only scheduled sessions can be edited.');
       tx.update(sessionRef, { ...schedule, updatedAt: serverTimestamp() });
       return { updated: true };
     });
@@ -460,31 +558,56 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
       const sessionSnap = await tx.get(sessionRef);
       if (!sessionSnap.exists) error('not-found', 'Session not found.');
       const session = sessionSnap.data();
-      if (session.assistantUid !== uid) error('permission-denied', 'This session belongs to another assistant.');
+      if (session.assistantUid !== uid)
+        error('permission-denied', 'This session belongs to another assistant.');
 
       if (action === 'openSession') {
         if (session.status === 'open') return { status: 'open' };
-        if (session.status !== 'scheduled') error('failed-precondition', 'This session cannot be opened again.');
-        tx.update(sessionRef, { status: 'open', openedAt: serverTimestamp(), updatedAt: serverTimestamp() });
+        if (session.status !== 'scheduled')
+          error('failed-precondition', 'This session cannot be opened again.');
+        tx.update(sessionRef, {
+          status: 'open',
+          openedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
         return { status: 'open' };
       }
 
       if (action === 'closeSession') {
         if (session.status === 'closed') return { status: 'closed' };
-        if (session.status !== 'open') error('failed-precondition', 'Only an open session can be closed.');
-        if ((classData.unfinishedSessionCount || 0) < 1) error('internal', 'The unfinished session counter is inconsistent.');
-        tx.update(sessionRef, { status: 'closed', closedAt: serverTimestamp(), updatedAt: serverTimestamp() });
-        tx.update(classRef, { unfinishedSessionCount: classData.unfinishedSessionCount - 1, updatedAt: serverTimestamp() });
+        if (session.status !== 'open')
+          error('failed-precondition', 'Only an open session can be closed.');
+        if ((classData.unfinishedSessionCount || 0) < 1)
+          error('internal', 'The unfinished session counter is inconsistent.');
+        tx.update(sessionRef, {
+          status: 'closed',
+          closedAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+        tx.update(classRef, {
+          unfinishedSessionCount: classData.unfinishedSessionCount - 1,
+          updatedAt: serverTimestamp(),
+        });
         return { status: 'closed' };
       }
 
       if (action === 'cancelSession') {
         if (session.status === 'cancelled') return { status: 'cancelled' };
-        if (session.status !== 'scheduled') error('failed-precondition', 'Only a scheduled session can be cancelled.');
-        if ((session.pendingPermitCount || 0) > 0) error('failed-precondition', 'Resolve pending permits before cancelling this session.');
-        if ((classData.unfinishedSessionCount || 0) < 1) error('internal', 'The unfinished session counter is inconsistent.');
-        tx.update(sessionRef, { status: 'cancelled', cancelledAt: serverTimestamp(), updatedAt: serverTimestamp() });
-        tx.update(classRef, { unfinishedSessionCount: classData.unfinishedSessionCount - 1, updatedAt: serverTimestamp() });
+        if (session.status !== 'scheduled')
+          error('failed-precondition', 'Only a scheduled session can be cancelled.');
+        if ((session.pendingPermitCount || 0) > 0)
+          error('failed-precondition', 'Resolve pending permits before cancelling this session.');
+        if ((classData.unfinishedSessionCount || 0) < 1)
+          error('internal', 'The unfinished session counter is inconsistent.');
+        tx.update(sessionRef, {
+          status: 'cancelled',
+          cancelledAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+        tx.update(classRef, {
+          unfinishedSessionCount: classData.unfinishedSessionCount - 1,
+          updatedAt: serverTimestamp(),
+        });
         return { status: 'cancelled' };
       }
       error('invalid-argument', 'Unsupported session action.');
@@ -504,11 +627,18 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
     const userRef = users.doc(uid);
     let checkedInAtMillis = null;
     await db.runTransaction(async (tx) => {
-      const [profileSnap, attendanceSnap, permitSnap, classSnap, sessionSnap, enrollmentSnap] = await Promise.all([
-        tx.get(userRef), tx.get(attendanceRef), tx.get(permitRef), tx.get(classRef), tx.get(sessionRef), tx.get(enrollmentRef),
-      ]);
+      const [profileSnap, attendanceSnap, permitSnap, classSnap, sessionSnap, enrollmentSnap] =
+        await Promise.all([
+          tx.get(userRef),
+          tx.get(attendanceRef),
+          tx.get(permitRef),
+          tx.get(classRef),
+          tx.get(sessionRef),
+          tx.get(enrollmentRef),
+        ]);
       const student = activeProfile(profileSnap, uid);
-      if (student.role !== 'praktikan') error('permission-denied', 'An active student account is required.');
+      if (student.role !== 'praktikan')
+        error('permission-denied', 'An active student account is required.');
       if (attendanceSnap.exists) {
         const existing = attendanceSnap.data();
         checkedInAtMillis = existing.checkedInAt?.toMillis?.() ?? null;
@@ -518,13 +648,22 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
       const classData = classSnap.data();
       const session = sessionSnap.data();
       if (classData.status !== 'active') error('failed-precondition', 'This class is archived.');
-      if (session.assistantUid !== classData.assistantUid) error('failed-precondition', 'Session ownership is invalid.');
-      if (session.status !== 'open') error('failed-precondition', 'Attendance is available only while the session is open.');
-      if (!enrollmentSnap.exists || enrollmentSnap.data().status !== 'active' || enrollmentSnap.data().studentUid !== uid) {
+      if (session.assistantUid !== classData.assistantUid)
+        error('failed-precondition', 'Session ownership is invalid.');
+      if (session.status !== 'open')
+        error('failed-precondition', 'Attendance is available only while the session is open.');
+      if (
+        !enrollmentSnap.exists ||
+        enrollmentSnap.data().status !== 'active' ||
+        enrollmentSnap.data().studentUid !== uid
+      ) {
         error('permission-denied', 'You are not an active member of this class.');
       }
       if (permitSnap.exists && ['pending', 'approved'].includes(permitSnap.data().status)) {
-        error('failed-precondition', 'A pending or approved permit prevents attendance for this session.');
+        error(
+          'failed-precondition',
+          'A pending or approved permit prevents attendance for this session.',
+        );
       }
       const checkedInAt = serverTimestamp();
       const snapshot = snapshotFor(classData, session);
@@ -554,23 +693,37 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
     const attendanceRef = attendances.doc(idPair(sessionId, uid));
     const permitRef = permits.doc(idPair(sessionId, uid));
     return db.runTransaction(async (tx) => {
-      const [profileSnap, classSnap, sessionSnap, enrollmentSnap, attendanceSnap, permitSnap] = await Promise.all([
-        tx.get(users.doc(uid)), tx.get(classRef), tx.get(sessionRef), tx.get(enrollmentRef), tx.get(attendanceRef), tx.get(permitRef),
-      ]);
+      const [profileSnap, classSnap, sessionSnap, enrollmentSnap, attendanceSnap, permitSnap] =
+        await Promise.all([
+          tx.get(users.doc(uid)),
+          tx.get(classRef),
+          tx.get(sessionRef),
+          tx.get(enrollmentRef),
+          tx.get(attendanceRef),
+          tx.get(permitRef),
+        ]);
       const student = activeProfile(profileSnap, uid);
-      if (student.role !== 'praktikan') error('permission-denied', 'An active student account is required.');
+      if (student.role !== 'praktikan')
+        error('permission-denied', 'An active student account is required.');
       if (!classSnap.exists || !sessionSnap.exists) error('not-found', 'Session not found.');
       const classData = classSnap.data();
       const session = sessionSnap.data();
       if (classData.status !== 'active') error('failed-precondition', 'This class is archived.');
-      if (session.status !== 'scheduled' && session.status !== 'open') error('failed-precondition', 'Permits can only be submitted before a session is finished.');
-      if (!enrollmentSnap.exists || enrollmentSnap.data().status !== 'active' || enrollmentSnap.data().studentUid !== uid) {
+      if (session.status !== 'scheduled' && session.status !== 'open')
+        error('failed-precondition', 'Permits can only be submitted before a session is finished.');
+      if (
+        !enrollmentSnap.exists ||
+        enrollmentSnap.data().status !== 'active' ||
+        enrollmentSnap.data().studentUid !== uid
+      ) {
         error('permission-denied', 'You are not an active member of this class.');
       }
       if (attendanceSnap.exists) error('failed-precondition', 'You already attended this session.');
-      if (permitSnap.exists) error('already-exists', 'A permit was already submitted for this session.');
+      if (permitSnap.exists)
+        error('already-exists', 'A permit was already submitted for this session.');
       const sessionData = sessionSnap.data();
-      if ((sessionData.pendingPermitCount || 0) < 0) error('internal', 'The pending permit counter is invalid.');
+      if ((sessionData.pendingPermitCount || 0) < 0)
+        error('internal', 'The pending permit counter is invalid.');
       const timestamp = serverTimestamp();
       tx.create(permitRef, {
         classId,
@@ -587,7 +740,10 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
         decidedAt: null,
         decisionNote: null,
       });
-      tx.update(sessionRef, { pendingPermitCount: (sessionData.pendingPermitCount || 0) + 1, updatedAt: serverTimestamp() });
+      tx.update(sessionRef, {
+        pendingPermitCount: (sessionData.pendingPermitCount || 0) + 1,
+        updatedAt: serverTimestamp(),
+      });
       return { id: permitRef.id, status: 'pending' };
     });
   }
@@ -595,9 +751,12 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
   async function decidePermit(input, uid) {
     assertAllowedKeys(input, ['action', 'permitId', 'decision', 'decisionNote']);
     const permitId = documentId(input.permitId, 'permitId');
-    if (input.decision !== 'approved' && input.decision !== 'rejected') error('invalid-argument', 'decision must be approved or rejected.');
-    const note = input.decisionNote == null ? '' : requiredString(input.decisionNote, 'decisionNote', 1, 500);
-    if (input.decision === 'rejected' && !note) error('invalid-argument', 'A rejection note is required.');
+    if (input.decision !== 'approved' && input.decision !== 'rejected')
+      error('invalid-argument', 'decision must be approved or rejected.');
+    const note =
+      input.decisionNote == null ? '' : requiredString(input.decisionNote, 'decisionNote', 1, 500);
+    if (input.decision === 'rejected' && !note)
+      error('invalid-argument', 'A rejection note is required.');
     const permitRef = permits.doc(permitId);
     return db.runTransaction(async (tx) => {
       await requireAssistant(tx, uid);
@@ -605,25 +764,38 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
       if (!permitSnap.exists) error('not-found', 'Permit not found.');
       const permit = permitSnap.data();
       const sessionRef = classes.doc(permit.classId).collection('sessions').doc(permit.sessionId);
-      const [sessionSnap, classSnap] = await Promise.all([tx.get(sessionRef), tx.get(classes.doc(permit.classId))]);
-      if (!classSnap.exists || !sessionSnap.exists) error('not-found', 'The permit session no longer exists.');
+      const [sessionSnap, classSnap] = await Promise.all([
+        tx.get(sessionRef),
+        tx.get(classes.doc(permit.classId)),
+      ]);
+      if (!classSnap.exists || !sessionSnap.exists)
+        error('not-found', 'The permit session no longer exists.');
       const session = sessionSnap.data();
       const classData = classSnap.data();
-      if (permit.assistantUid !== uid || session.assistantUid !== uid || classData.assistantUid !== uid) {
+      if (
+        permit.assistantUid !== uid ||
+        session.assistantUid !== uid ||
+        classData.assistantUid !== uid
+      ) {
         error('permission-denied', 'This permit belongs to another assistant.');
       }
       if (permit.status !== 'pending') {
-        if (permit.status === input.decision && (permit.decisionNote || '') === note) return { id: permitId, status: permit.status };
+        if (permit.status === input.decision && (permit.decisionNote || '') === note)
+          return { id: permitId, status: permit.status };
         error('failed-precondition', 'This permit has already been decided.');
       }
-      if ((session.pendingPermitCount || 0) < 1) error('internal', 'The pending permit counter is inconsistent.');
+      if ((session.pendingPermitCount || 0) < 1)
+        error('internal', 'The pending permit counter is inconsistent.');
       tx.update(permitRef, {
         status: input.decision,
         decidedBy: uid,
         decidedAt: serverTimestamp(),
         decisionNote: note || null,
       });
-      tx.update(sessionRef, { pendingPermitCount: session.pendingPermitCount - 1, updatedAt: serverTimestamp() });
+      tx.update(sessionRef, {
+        pendingPermitCount: session.pendingPermitCount - 1,
+        updatedAt: serverTimestamp(),
+      });
       return { id: permitId, status: input.decision };
     });
   }
@@ -641,18 +813,29 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
     const sessionRef = classRef.collection('sessions').doc(sessionId);
     const attendanceRef = attendances.doc(reviewId);
     return db.runTransaction(async (tx) => {
-      const [profileSnap, classSnap, sessionSnap, attendanceSnap, reviewSnap, summarySnap] = await Promise.all([
-        tx.get(users.doc(uid)), tx.get(classRef), tx.get(sessionRef), tx.get(attendanceRef), tx.get(reviewRef), tx.get(summaryRef),
-      ]);
+      const [profileSnap, classSnap, sessionSnap, attendanceSnap, reviewSnap, summarySnap] =
+        await Promise.all([
+          tx.get(users.doc(uid)),
+          tx.get(classRef),
+          tx.get(sessionRef),
+          tx.get(attendanceRef),
+          tx.get(reviewRef),
+          tx.get(summaryRef),
+        ]);
       const student = activeProfile(profileSnap, uid);
-      if (student.role !== 'praktikan') error('permission-denied', 'An active student account is required.');
-      if (reviewSnap.exists) return { id: reviewId, analysisStatus: reviewSnap.data().analysisStatus };
+      if (student.role !== 'praktikan')
+        error('permission-denied', 'An active student account is required.');
+      if (reviewSnap.exists)
+        return { id: reviewId, analysisStatus: reviewSnap.data().analysisStatus };
       if (!classSnap.exists || !sessionSnap.exists) error('not-found', 'Session not found.');
       const classData = classSnap.data();
       const session = sessionSnap.data();
-      if (session.assistantUid !== classData.assistantUid) error('failed-precondition', 'Session ownership is invalid.');
-      if (session.status !== 'closed') error('failed-precondition', 'Reviews can only be submitted after a session is finished.');
-      if (!attendanceSnap.exists || attendanceSnap.data().studentUid !== uid) error('permission-denied', 'Only students who attended this session can review it.');
+      if (session.assistantUid !== classData.assistantUid)
+        error('failed-precondition', 'Session ownership is invalid.');
+      if (session.status !== 'closed')
+        error('failed-precondition', 'Reviews can only be submitted after a session is finished.');
+      if (!attendanceSnap.exists || attendanceSnap.data().studentUid !== uid)
+        error('permission-denied', 'Only students who attended this session can review it.');
       const priorSummary = summarySnap.exists ? summarySnap.data() : null;
       const timestamp = serverTimestamp();
       tx.create(reviewRef, {
@@ -693,7 +876,8 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
   }
 
   async function operator(input, token) {
-    if (token?.labsyncOperator !== true) error('permission-denied', 'Operator privileges are required.');
+    if (token?.labsyncOperator !== true)
+      error('permission-denied', 'Operator privileges are required.');
     if (input.action === 'provisionAssistant') {
       assertAllowedKeys(input, ['action', 'uid', 'displayName']);
       const targetUid = documentId(input.uid, 'uid');
@@ -711,30 +895,52 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
         reviews.where('studentUid', '==', targetUid).limit(1),
       ];
       return db.runTransaction(async (tx) => {
-        const [userSnap, enrollmentSnap, attendanceSnap, permitSnap, reviewSnap] = await Promise.all([
-          tx.get(userRef), ...queries.map((query) => tx.get(query)),
-        ]);
+        const [userSnap, enrollmentSnap, attendanceSnap, permitSnap, reviewSnap] =
+          await Promise.all([tx.get(userRef), ...queries.map((query) => tx.get(query))]);
         if (!userSnap.exists) {
-          if ([enrollmentSnap, attendanceSnap, permitSnap, reviewSnap].some((snap) => !snap.empty)) {
-            error('failed-precondition', 'Identitas sudah memiliki catatan akademik. Hubungi pengelola.');
+          if (
+            [enrollmentSnap, attendanceSnap, permitSnap, reviewSnap].some((snap) => !snap.empty)
+          ) {
+            error(
+              'failed-precondition',
+              'Identitas sudah memiliki catatan akademik. Hubungi pengelola.',
+            );
           }
-          const displayName = requiredString(input.displayName ?? target.displayName, 'displayName', 1, 100);
+          const displayName = requiredString(
+            input.displayName ?? target.displayName,
+            'displayName',
+            1,
+            100,
+          );
           tx.create(userRef, {
-            displayName, role: 'asisten', accountStatus: 'active', nim: null,
-            createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+            displayName,
+            role: 'asisten',
+            accountStatus: 'active',
+            nim: null,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp(),
           });
           return { provisioned: true };
         }
         const profile = userSnap.data();
-        if (profile.role === 'asisten' && profile.accountStatus === 'active' && profile.nim == null) return { provisioned: false };
-        if (profile.role !== 'praktikan' || profile.accountStatus !== 'active') error('failed-precondition', 'Only an active student account can be provisioned as an assistant.');
+        if (profile.role === 'asisten' && profile.accountStatus === 'active' && profile.nim == null)
+          return { provisioned: false };
+        if (profile.role !== 'praktikan' || profile.accountStatus !== 'active')
+          error(
+            'failed-precondition',
+            'Only an active student account can be provisioned as an assistant.',
+          );
         if ([enrollmentSnap, attendanceSnap, permitSnap, reviewSnap].some((snap) => !snap.empty)) {
-          error('failed-precondition', 'This account has academic records. Provision a separate assistant account.');
+          error(
+            'failed-precondition',
+            'This account has academic records. Provision a separate assistant account.',
+          );
         }
         const nim = normalizeNim(profile.nim);
         const keyRef = keyCollection.doc(nim);
         const keySnap = await tx.get(keyRef);
-        if (keySnap.exists && keySnap.data().studentUid !== targetUid) error('failed-precondition', 'The student NIM claim is inconsistent.');
+        if (keySnap.exists && keySnap.data().studentUid !== targetUid)
+          error('failed-precondition', 'The student NIM claim is inconsistent.');
         tx.update(userRef, { role: 'asisten', nim: null, updatedAt: serverTimestamp() });
         if (keySnap.exists) tx.delete(keyRef);
         return { provisioned: true };
@@ -744,13 +950,15 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
     if (input.action === 'setAccountStatus') {
       assertAllowedKeys(input, ['action', 'uid', 'accountStatus']);
       const targetUid = documentId(input.uid, 'uid');
-      if (input.accountStatus !== 'active' && input.accountStatus !== 'disabled') error('invalid-argument', 'accountStatus must be active or disabled.');
+      if (input.accountStatus !== 'active' && input.accountStatus !== 'disabled')
+        error('invalid-argument', 'accountStatus must be active or disabled.');
       return db.runTransaction(async (tx) => {
         const ref = users.doc(targetUid);
         const snap = await tx.get(ref);
         if (!snap.exists) error('not-found', 'User profile not found.');
         const profile = snap.data();
-        if (profile.accountStatus === input.accountStatus) return { accountStatus: input.accountStatus };
+        if (profile.accountStatus === input.accountStatus)
+          return { accountStatus: input.accountStatus };
         tx.update(ref, { accountStatus: input.accountStatus, updatedAt: serverTimestamp() });
         return { accountStatus: input.accountStatus };
       });
@@ -767,13 +975,16 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
         const [reviewSnap, jobSnap] = await Promise.all([tx.get(reviewRef), tx.get(jobRef)]);
         if (!reviewSnap.exists || !jobSnap.exists) error('not-found', 'Review job not found.');
         const review = reviewSnap.data();
-        if (review.sessionId !== sessionId || review.studentUid !== studentUid) error('failed-precondition', 'Review identity is invalid.');
+        if (review.sessionId !== sessionId || review.studentUid !== studentUid)
+          error('failed-precondition', 'Review identity is invalid.');
         const summaryRef = reviewSummaries.doc(sessionId);
         const summarySnap = await tx.get(summaryRef);
         const job = jobSnap.data();
         if (job.state === 'pending') return { queued: false };
-        if (job.state !== 'failed') error('failed-precondition', 'Only failed review jobs can be retried.');
-        if (!summarySnap.exists || (summarySnap.data().failedCount || 0) < 1) error('internal', 'Review summary failed count is inconsistent.');
+        if (job.state !== 'failed')
+          error('failed-precondition', 'Only failed review jobs can be retried.');
+        if (!summarySnap.exists || (summarySnap.data().failedCount || 0) < 1)
+          error('internal', 'Review summary failed count is inconsistent.');
         const timestamp = serverTimestamp();
         tx.update(jobRef, {
           state: 'pending',
@@ -790,7 +1001,10 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
           modelVersion: null,
           analyzedAt: null,
         });
-        tx.update(summaryRef, { failedCount: summarySnap.data().failedCount - 1, updatedAt: timestamp });
+        tx.update(summaryRef, {
+          failedCount: summarySnap.data().failedCount - 1,
+          updatedAt: timestamp,
+        });
         return { queued: true };
       });
     }
@@ -804,29 +1018,48 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
     if (!auth?.uid) error('unauthenticated', 'Sign in before continuing.');
     const uid = auth.uid;
     switch (action) {
-      case 'completeProfile': return completeProfile(input, auth);
-      case 'createPracticum': return createPracticum(input, uid);
-      case 'updatePracticum': return updatePracticum(input, uid);
-      case 'archivePracticum': return archivePracticum(input, uid);
-      case 'createClass': return createClass(input, uid);
-      case 'updateClass': return updateClass(input, uid);
-      case 'archiveClass': return archiveClass(input, uid);
-      case 'lookupStudent': return lookupStudent(input, uid);
-      case 'addStudent': return addStudent(input, uid);
-      case 'removeStudent': return removeStudent(input, uid);
-      case 'createSession': return createSession(input, uid);
-      case 'updateSession': return updateSession(input, uid);
+      case 'completeProfile':
+        return completeProfile(input, auth);
+      case 'createPracticum':
+        return createPracticum(input, uid);
+      case 'updatePracticum':
+        return updatePracticum(input, uid);
+      case 'archivePracticum':
+        return archivePracticum(input, uid);
+      case 'createClass':
+        return createClass(input, uid);
+      case 'updateClass':
+        return updateClass(input, uid);
+      case 'archiveClass':
+        return archiveClass(input, uid);
+      case 'lookupStudent':
+        return lookupStudent(input, uid);
+      case 'addStudent':
+        return addStudent(input, uid);
+      case 'removeStudent':
+        return removeStudent(input, uid);
+      case 'createSession':
+        return createSession(input, uid);
+      case 'updateSession':
+        return updateSession(input, uid);
       case 'openSession':
       case 'closeSession':
-      case 'cancelSession': return setSessionState(input, uid, action);
-      case 'checkIn': return checkIn(input, uid);
-      case 'submitPermit': return submitPermit(input, uid);
-      case 'decidePermit': return decidePermit(input, uid);
-      case 'submitReview': return submitReview(input, uid);
+      case 'cancelSession':
+        return setSessionState(input, uid, action);
+      case 'checkIn':
+        return checkIn(input, uid);
+      case 'submitPermit':
+        return submitPermit(input, uid);
+      case 'decidePermit':
+        return decidePermit(input, uid);
+      case 'submitReview':
+        return submitReview(input, uid);
       case 'provisionAssistant':
       case 'setAccountStatus':
-      case 'retryReview': return operator(input, auth.token);
-      default: error('invalid-argument', 'Unsupported action.');
+      case 'retryReview':
+        return operator(input, auth.token);
+      default:
+        error('invalid-argument', 'Unsupported action.');
     }
   }
 

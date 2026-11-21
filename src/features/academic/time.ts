@@ -12,27 +12,56 @@ function readZonedParts(date: Date, timeZone: string) {
   }).formatToParts(date);
   const pick = (type: string) => Number(parts.find((part) => part.type === type)?.value ?? '0');
   return {
-    year: pick('year'), month: pick('month'), day: pick('day'), hour: pick('hour'), minute: pick('minute'),
+    year: pick('year'),
+    month: pick('month'),
+    day: pick('day'),
+    hour: pick('hour'),
+    minute: pick('minute'),
   };
 }
 
-function matches(parts: ReturnType<typeof readZonedParts>, expected: { year: number; month: number; day: number; hour: number; minute: number }) {
-  return parts.year === expected.year && parts.month === expected.month && parts.day === expected.day &&
-    parts.hour === expected.hour && parts.minute === expected.minute;
+function matches(
+  parts: ReturnType<typeof readZonedParts>,
+  expected: { year: number; month: number; day: number; hour: number; minute: number },
+) {
+  return (
+    parts.year === expected.year &&
+    parts.month === expected.month &&
+    parts.day === expected.day &&
+    parts.hour === expected.hour &&
+    parts.minute === expected.minute
+  );
 }
 
 /** Converts a class-local date and time into an epoch without relying on the device's time zone. */
-export function zonedDateTimeToEpochMs(dateText: string, timeText: string, timeZone: string): number {
+export function zonedDateTimeToEpochMs(
+  dateText: string,
+  timeText: string,
+  timeZone: string,
+): number {
   const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateText.trim());
   const timeMatch = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(timeText.trim());
   if (!dateMatch || !timeMatch) throw new Error('Masukkan tanggal YYYY-MM-DD dan waktu HH:mm.');
   const expected = {
-    year: Number(dateMatch[1]), month: Number(dateMatch[2]), day: Number(dateMatch[3]),
-    hour: Number(timeMatch[1]), minute: Number(timeMatch[2]),
+    year: Number(dateMatch[1]),
+    month: Number(dateMatch[2]),
+    day: Number(dateMatch[3]),
+    hour: Number(timeMatch[1]),
+    minute: Number(timeMatch[2]),
   };
-  const utcTarget = Date.UTC(expected.year, expected.month - 1, expected.day, expected.hour, expected.minute);
+  const utcTarget = Date.UTC(
+    expected.year,
+    expected.month - 1,
+    expected.day,
+    expected.hour,
+    expected.minute,
+  );
   const dateProbe = new Date(utcTarget);
-  if (dateProbe.getUTCFullYear() !== expected.year || dateProbe.getUTCMonth() + 1 !== expected.month || dateProbe.getUTCDate() !== expected.day) {
+  if (
+    dateProbe.getUTCFullYear() !== expected.year ||
+    dateProbe.getUTCMonth() + 1 !== expected.month ||
+    dateProbe.getUTCDate() !== expected.day
+  ) {
     throw new Error('Tanggal tidak valid.');
   }
   let epoch = utcTarget;
@@ -54,9 +83,15 @@ export function zonedDateTimeToEpochMs(dateText: string, timeText: string, timeZ
   return epoch;
 }
 
-type SessionRange = Pick<AcademicSession, 'date' | 'startTime' | 'endDate' | 'endTime' | 'timeZone'>;
+type SessionRange = Pick<
+  AcademicSession,
+  'date' | 'startTime' | 'endDate' | 'endTime' | 'timeZone'
+>;
 
 export function formatSessionRange({ date, startTime, endDate, endTime, timeZone }: SessionRange) {
-  const range = date === endDate ? `${date} · ${startTime}–${endTime}` : `${date} ${startTime}–${endDate} ${endTime}`;
+  const range =
+    date === endDate
+      ? `${date} · ${startTime}–${endTime}`
+      : `${date} ${startTime}–${endDate} ${endTime}`;
   return `${range} · ${timeZone}`;
 }

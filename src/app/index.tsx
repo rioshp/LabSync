@@ -7,7 +7,14 @@ import { AccountSetup } from '@/components/account-setup';
 import { AuthButton, AuthError, AuthField, AuthScreen, authStyles } from '@/components/auth-screen';
 import { AuthSessionStatus } from '@/components/auth-session-status';
 import { useAuth } from '@/hooks/useAuth';
-import { authCode, getAuthErrorMessage, getGoogleCredential, login, loginWithGoogle, resetPassword } from '@/lib/auth';
+import {
+  authCode,
+  getAuthErrorMessage,
+  getGoogleCredential,
+  login,
+  loginWithGoogle,
+  resetPassword,
+} from '@/lib/auth';
 
 export default function LoginScreen() {
   const { user, phase, error: sessionError } = useAuth();
@@ -30,7 +37,13 @@ export default function LoginScreen() {
         setNotice('Jika alamat terdaftar, tautan reset akan dikirim. Periksa juga folder spam.');
       } else if (action === 'email') {
         const pending = pendingGoogle.current;
-        await login(email, password, pending?.email.toLowerCase() === email.trim().toLowerCase() ? pending.credential : undefined);
+        await login(
+          email,
+          password,
+          pending?.email.toLowerCase() === email.trim().toLowerCase()
+            ? pending.credential
+            : undefined,
+        );
         pendingGoogle.current = null;
         setPassword('');
       } else {
@@ -43,7 +56,9 @@ export default function LoginScreen() {
           if (authCode(error) !== 'account-exists-with-different-credential') throw error;
           pendingGoogle.current = google;
           setEmail(google.email);
-          setNotice('Masuk dengan password akun ini untuk menghubungkan Google. Jika sesi Google kedaluwarsa, pilih Google lagi.');
+          setNotice(
+            'Masuk dengan password akun ini untuk menghubungkan Google. Jika sesi Google kedaluwarsa, pilih Google lagi.',
+          );
         }
       }
     } catch (error) {
@@ -61,30 +76,84 @@ export default function LoginScreen() {
 
   const resetting = mode === 'reset';
   return (
-    <AuthScreen key={mode} intro={!resetting} title={resetting ? 'Atur ulang password.' : 'Halo,\nselamat datang.'}
-      description={resetting ? 'Masukkan email akun praktikum kamu.' : 'Masuk untuk mengakses kegiatan praktikum kamu.'}>
+    <AuthScreen
+      key={mode}
+      intro={!resetting}
+      title={resetting ? 'Atur ulang password.' : 'Halo,\nselamat datang.'}
+      description={
+        resetting
+          ? 'Masukkan email akun praktikum kamu.'
+          : 'Masuk untuk mengakses kegiatan praktikum kamu.'
+      }
+    >
       <View style={authStyles.form}>
-        <AuthField label="Email" value={email} onChangeText={setEmail} keyboardType="email-address"
-          autoCapitalize="none" autoCorrect={false} autoComplete="email" editable={!busy} />
-        {!resetting && <AuthField label="Password" value={password} onChangeText={setPassword} secureTextEntry
-          autoCapitalize="none" autoCorrect={false} autoComplete="current-password" editable={!busy}
-          returnKeyType="go" onSubmitEditing={() => submit('email')} />}
+        <AuthField
+          label="Email"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="email"
+          editable={!busy}
+        />
+        {!resetting && (
+          <AuthField
+            label="Password"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoComplete="current-password"
+            editable={!busy}
+            returnKeyType="go"
+            onSubmitEditing={() => submit('email')}
+          />
+        )}
         <AuthError message={error ?? sessionError} />
-        {notice ? <Text accessibilityLiveRegion="polite" style={authStyles.label}>{notice}</Text> : null}
-        <AuthButton title={resetting ? 'Kirim tautan reset' : 'Masuk'} onPress={() => submit('email')}
-          busy={busy === 'email'} disabled={!!busy} />
-        {!resetting && <AuthButton title="Lanjut dengan Google" onPress={() => submit('google')}
-          busy={busy === 'google'} disabled={!!busy} />}
-        <Text accessibilityRole="button" style={authStyles.link}
+        {notice ? (
+          <Text accessibilityLiveRegion="polite" style={authStyles.label}>
+            {notice}
+          </Text>
+        ) : null}
+        <AuthButton
+          title={resetting ? 'Kirim tautan reset' : 'Masuk'}
+          onPress={() => submit('email')}
+          busy={busy === 'email'}
+          disabled={!!busy}
+        />
+        {!resetting && (
+          <AuthButton
+            title="Lanjut dengan Google"
+            onPress={() => submit('google')}
+            busy={busy === 'google'}
+            disabled={!!busy}
+          />
+        )}
+        <Text
+          accessibilityRole="button"
+          style={authStyles.link}
           onPress={() => {
             if (busy) return;
-            setMode(resetting ? 'login' : 'reset'); setError(null); setNotice('');
-          }}>{resetting ? 'Kembali ke masuk' : 'Lupa password?'}</Text>
+            setMode(resetting ? 'login' : 'reset');
+            setError(null);
+            setNotice('');
+          }}
+        >
+          {resetting ? 'Kembali ke masuk' : 'Lupa password?'}
+        </Text>
       </View>
-      {!busy && !resetting && <>
-        <Link href="/register" style={authStyles.link}>Belum punya akun? Daftar</Link>
-        <Link href="/demo" style={authStyles.link}>Coba demo lokal</Link>
-      </>}
+      {!busy && !resetting && (
+        <>
+          <Link href="/register" style={authStyles.link}>
+            Belum punya akun? Daftar
+          </Link>
+          <Link href="/demo" style={authStyles.link}>
+            Coba demo lokal
+          </Link>
+        </>
+      )}
     </AuthScreen>
   );
 }

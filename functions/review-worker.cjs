@@ -91,7 +91,7 @@ function loggerCall(logger, method, payload) {
 }
 
 function calculateBackoffMs(attemptNumber, baseMs, maximumMs) {
-  return Math.min(baseMs * (2 ** Math.max(0, attemptNumber - 1)), maximumMs);
+  return Math.min(baseMs * 2 ** Math.max(0, attemptNumber - 1), maximumMs);
 }
 
 function withTimeout(promise, timeoutMs) {
@@ -167,19 +167,23 @@ function createReviewWorker({
       }
 
       const nextAttemptAtMs = toMillis(job.nextAttemptAt);
-      if (!allowEarly && job.state === 'pending' && nextAttemptAtMs != null
-          && nextAttemptAtMs > claimNowMs) {
+      if (
+        !allowEarly &&
+        job.state === 'pending' &&
+        nextAttemptAtMs != null &&
+        nextAttemptAtMs > claimNowMs
+      ) {
         return { status: 'not_due' };
       }
 
-      const previousAttemptCount = Number.isInteger(job.attemptCount) && job.attemptCount >= 0
-        ? job.attemptCount
-        : 0;
+      const previousAttemptCount =
+        Number.isInteger(job.attemptCount) && job.attemptCount >= 0 ? job.attemptCount : 0;
       // A failed job explicitly re-queued by an operator gets a fresh retry
       // window even if the caller did not reset attemptCount in its transaction.
-      const attemptCount = allowEarly && job.state === 'pending' && previousAttemptCount >= maxAttempts
-        ? 1
-        : previousAttemptCount + 1;
+      const attemptCount =
+        allowEarly && job.state === 'pending' && previousAttemptCount >= maxAttempts
+          ? 1
+          : previousAttemptCount + 1;
       if (attemptCount > maxAttempts) return { status: 'attempts_exhausted' };
 
       transaction.update(jobRef, {
@@ -245,7 +249,13 @@ function createReviewWorker({
         modelVersion: MODEL_VERSION,
         analyzedAt: serverTimestamp(),
       });
-      writeSummaryCounter(transaction, summaryRef, summarySnapshot, claim.review, `${sentiment}Count`);
+      writeSummaryCounter(
+        transaction,
+        summaryRef,
+        summarySnapshot,
+        claim.review,
+        `${sentiment}Count`,
+      );
       return { status: 'succeeded' };
     });
   }
@@ -328,9 +338,8 @@ function createReviewWorker({
   }
 
   function writeSummaryCounter(transaction, summaryRef, summarySnapshot, review, counterField) {
-    const increment = FieldValue && typeof FieldValue.increment === 'function'
-      ? FieldValue.increment(1)
-      : 1;
+    const increment =
+      FieldValue && typeof FieldValue.increment === 'function' ? FieldValue.increment(1) : 1;
     const patch = {
       [counterField]: increment,
       updatedAt: serverTimestamp(),
@@ -405,11 +414,13 @@ function createReviewWorker({
   async function retryDueReviewJobs() {
     const dueTime = timestampForDate(readNow());
     const [pendingSnapshot, expiredSnapshot] = await Promise.all([
-      jobs.where('state', '==', 'pending')
+      jobs
+        .where('state', '==', 'pending')
         .where('nextAttemptAt', '<=', dueTime)
         .limit(batchSize)
         .get(),
-      jobs.where('state', '==', 'processing')
+      jobs
+        .where('state', '==', 'processing')
         .where('leaseUntil', '<=', dueTime)
         .limit(batchSize)
         .get(),
@@ -423,8 +434,9 @@ function createReviewWorker({
     const results = await Promise.allSettled(
       Array.from(reviewIds, (reviewId) => processReviewJob(reviewId)),
     );
-    const succeeded = results.filter((result) =>
-      result.status === 'fulfilled' && result.value?.status === 'succeeded').length;
+    const succeeded = results.filter(
+      (result) => result.status === 'fulfilled' && result.value?.status === 'succeeded',
+    ).length;
     const rejected = results.filter((result) => result.status === 'rejected').length;
     loggerCall(logger, rejected > 0 ? 'warn' : 'info', {
       event: 'review_retry_scan_completed',

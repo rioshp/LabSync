@@ -54,7 +54,8 @@ function parseMillis(value, field, Timestamp) {
   if (typeof value === 'number') millis = value;
   else if (typeof value === 'string' && value.trim()) millis = Date.parse(value);
   else if (value && typeof value.toMillis === 'function') millis = value.toMillis();
-  else if (value && typeof value.seconds === 'number') millis = value.seconds * 1000 + Math.floor((value.nanoseconds || 0) / 1e6);
+  else if (value && typeof value.seconds === 'number')
+    millis = value.seconds * 1000 + Math.floor((value.nanoseconds || 0) / 1e6);
   if (!Number.isSafeInteger(Math.floor(millis)) || !Number.isFinite(millis) || millis < 0) {
     error('invalid-argument', `${field} must be a valid Unix timestamp in milliseconds.`);
   }

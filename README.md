@@ -15,6 +15,12 @@ Aplikasi React Native untuk praktikum: jadwal kelas, sesi, presensi realtime, iz
 - Alur baca dan tulis terpisah. Layar mendengarkan Firestore melalui hook dan mengirim perubahan melalui `src/lib/mutations.ts`. Backend memeriksa peran dan kepemilikan sebelum commit.
 - Backend masuk lewat `functions/index.cjs`. `validation.cjs` memvalidasi kontrak input, `domain.cjs` menangani otorisasi dan transaksi, dan `review-worker.cjs` memproses sentimen ulasan. Keputusan izin ada di transaksi asisten.
 
+Konfigurasi format ada di `.prettierrc.json`. Untuk menerapkannya ke sumber, tes, dan konfigurasi JavaScript tanpa menjalankan build:
+
+```sh
+npx --yes prettier@3.6.2 --write 'src/**/*.{ts,tsx}' 'functions/**/*.{cjs,js}' 'tests/**/*.cjs' 'plugins/*.js' eslint.config.js
+```
+
 ## Jalankan dan verifikasi
 
 Gunakan versi Node yang didukung Expo dan runtime Functions. Untuk Emulator Suite, siapkan Firebase CLI dan Java 21 atau lebih baru.

@@ -1,4 +1,13 @@
-import { Timestamp, collection, doc, orderBy, query, where, type QueryConstraint, type QuerySnapshot } from '@react-native-firebase/firestore';
+import {
+  Timestamp,
+  collection,
+  doc,
+  orderBy,
+  query,
+  where,
+  type QueryConstraint,
+  type QuerySnapshot,
+} from '@react-native-firebase/firestore';
 
 import type { Role } from '@/types/user';
 
@@ -64,7 +73,8 @@ function localParts(date: Date, timeZone: string) {
 
 export function parsePracticum(id: string, data: Record<string, unknown>): Practicum {
   const status = data.status;
-  if (status !== 'active' && status !== 'archived') throw new Error('Status praktikum tidak valid.');
+  if (status !== 'active' && status !== 'archived')
+    throw new Error('Status praktikum tidak valid.');
   return {
     id,
     assistantUid: stringField(data, 'assistantUid'),
@@ -102,12 +112,18 @@ export function parseAcademicSession(
   classInfo: Pick<AcademicClass, 'id' | 'name' | 'practicumName' | 'timeZone'>,
 ): AcademicSession {
   const status = data.status;
-  if (status !== 'scheduled' && status !== 'open' && status !== 'closed' && status !== 'cancelled') {
+  if (
+    status !== 'scheduled' &&
+    status !== 'open' &&
+    status !== 'closed' &&
+    status !== 'cancelled'
+  ) {
     throw new Error('Status sesi tidak valid.');
   }
   const startsAt = timestamp(data.startsAt, 'mulai');
   const endsAt = timestamp(data.endsAt, 'selesai');
-  if (endsAt.toMillis() <= startsAt.toMillis()) throw new Error('Waktu selesai sesi harus setelah waktu mulai.');
+  if (endsAt.toMillis() <= startsAt.toMillis())
+    throw new Error('Waktu selesai sesi harus setelah waktu mulai.');
   const start = localParts(startsAt.toDate(), classInfo.timeZone);
   const end = localParts(endsAt.toDate(), classInfo.timeZone);
   return {
@@ -134,7 +150,8 @@ export function parseAcademicSession(
 
 export function parseEnrollment(id: string, data: Record<string, unknown>): Enrollment {
   const status = data.status;
-  if (status !== 'active' && status !== 'removed') throw new Error('Status peserta kelas tidak valid.');
+  if (status !== 'active' && status !== 'removed')
+    throw new Error('Status peserta kelas tidak valid.');
   return {
     id,
     classId: stringField(data, 'classId'),
@@ -169,7 +186,10 @@ function parseReviewSummary(id: string, data?: Record<string, unknown>): ReviewS
     neutralCount,
     negativeCount,
     failedCount,
-    pendingCount: Math.max(0, totalSubmitted - positiveCount - neutralCount - negativeCount - failedCount),
+    pendingCount: Math.max(
+      0,
+      totalSubmitted - positiveCount - neutralCount - negativeCount - failedCount,
+    ),
   };
 }
 
@@ -184,16 +204,19 @@ export function subscribeSchedule(
   let rootReady = false;
   let rootOffline = false;
   let rootStop = noop;
-  const entries = new Map<string, {
-    info: AcademicClass | null;
-    sessions: AcademicSession[];
-    ready: boolean;
-    classOffline: boolean;
-    sessionOffline: boolean;
-    sessionGeneration: number;
-    stopClass: Stop;
-    stopSessions: Stop;
-  }>();
+  const entries = new Map<
+    string,
+    {
+      info: AcademicClass | null;
+      sessions: AcademicSession[];
+      ready: boolean;
+      classOffline: boolean;
+      sessionOffline: boolean;
+      sessionGeneration: number;
+      stopClass: Stop;
+      stopSessions: Stop;
+    }
+  >();
 
   const stop = () => {
     if (!active) return;
@@ -215,8 +238,9 @@ export function subscribeSchedule(
   const publish = () => {
     if (!active) return;
     const values = [...entries.values()];
-    const sessions = values.flatMap((entry) => entry.sessions).sort((a, b) =>
-      a.startsAt.toMillis() - b.startsAt.toMillis() || a.id.localeCompare(b.id));
+    const sessions = values
+      .flatMap((entry) => entry.sessions)
+      .sort((a, b) => a.startsAt.toMillis() - b.startsAt.toMillis() || a.id.localeCompare(b.id));
     onChange({
       sessions,
       loading: !rootReady || values.some((entry) => !entry.ready),
@@ -245,69 +269,94 @@ export function subscribeSchedule(
         }
         for (const classId of next) {
           if (entries.has(classId)) continue;
-          const entry = { info: null as AcademicClass | null, sessions: [] as AcademicSession[], ready: false, classOffline: false, sessionOffline: false, sessionGeneration: 0, stopClass: noop, stopSessions: noop };
+          const entry = {
+            info: null as AcademicClass | null,
+            sessions: [] as AcademicSession[],
+            ready: false,
+            classOffline: false,
+            sessionOffline: false,
+            sessionGeneration: 0,
+            stopClass: noop,
+            stopSessions: noop,
+          };
           entries.set(classId, entry);
-          entry.stopClass = firestore.onSnapshot(doc(db, 'classes', classId), { includeMetadataChanges: true }, (snapshot) => {
-            if (!active || entries.get(classId) !== entry) return;
-            try {
-              entry.classOffline = snapshot.metadata.fromCache;
-              const previous = entry.info;
-              const next = snapshot.exists() ? parseAcademicClass(snapshot.id, snapshot.data()) : null;
-              entry.info = next;
+          entry.stopClass = firestore.onSnapshot(
+            doc(db, 'classes', classId),
+            { includeMetadataChanges: true },
+            (snapshot) => {
+              if (!active || entries.get(classId) !== entry) return;
+              try {
+                entry.classOffline = snapshot.metadata.fromCache;
+                const previous = entry.info;
+                const next = snapshot.exists()
+                  ? parseAcademicClass(snapshot.id, snapshot.data())
+                  : null;
+                entry.info = next;
 
-              if (!next || next.status !== 'active') {
-                entry.sessionGeneration += 1;
+                if (!next || next.status !== 'active') {
+                  entry.sessionGeneration += 1;
+                  entry.stopSessions();
+                  entry.stopSessions = noop;
+                  entry.sessions = [];
+                  entry.sessionOffline = false;
+                  entry.ready = true;
+                  publish();
+                  return;
+                }
+
+                // Cache metadata does not change the session query or its class display values.
+                if (
+                  previous?.status === 'active' &&
+                  previous.name === next.name &&
+                  previous.practicumName === next.practicumName &&
+                  previous.timeZone === next.timeZone
+                ) {
+                  publish();
+                  return;
+                }
+
+                const generation = ++entry.sessionGeneration;
+                function isCurrent() {
+                  return (
+                    active &&
+                    entries.get(classId) === entry &&
+                    entry.sessionGeneration === generation
+                  );
+                }
                 entry.stopSessions();
-                entry.stopSessions = noop;
-                entry.sessions = [];
-                entry.sessionOffline = false;
-                entry.ready = true;
+                entry.ready = false;
+                entry.stopSessions = firestore.onSnapshot(
+                  query(
+                    collection(db, 'classes', classId, 'sessions'),
+                    where('startsAt', '>=', scheduleStart),
+                    where('startsAt', '<=', scheduleEnd),
+                    orderBy('startsAt', 'asc'),
+                  ),
+                  { includeMetadataChanges: true },
+                  (sessionsSnapshot) => {
+                    if (!isCurrent()) return;
+                    try {
+                      entry.sessions = sessionsSnapshot.docs.map((item) =>
+                        parseAcademicSession(item.id, item.data(), next),
+                      );
+                      entry.sessionOffline = sessionsSnapshot.metadata.fromCache;
+                      entry.ready = true;
+                      publish();
+                    } catch (error) {
+                      fail(error);
+                    }
+                  },
+                  (error) => {
+                    if (isCurrent()) fail(error);
+                  },
+                );
                 publish();
-                return;
+              } catch (error) {
+                fail(error);
               }
-
-              // Cache metadata does not change the session query or its class display values.
-              if (previous?.status === 'active' && previous.name === next.name &&
-                previous.practicumName === next.practicumName && previous.timeZone === next.timeZone) {
-                publish();
-                return;
-              }
-
-              const generation = ++entry.sessionGeneration;
-              function isCurrent() {
-                return active && entries.get(classId) === entry && entry.sessionGeneration === generation;
-              }
-              entry.stopSessions();
-              entry.ready = false;
-              entry.stopSessions = firestore.onSnapshot(
-                query(
-                  collection(db, 'classes', classId, 'sessions'),
-                  where('startsAt', '>=', scheduleStart),
-                  where('startsAt', '<=', scheduleEnd),
-                  orderBy('startsAt', 'asc'),
-                ),
-                { includeMetadataChanges: true },
-                (sessionsSnapshot) => {
-                  if (!isCurrent()) return;
-                  try {
-                    entry.sessions = sessionsSnapshot.docs.map((item) =>
-                      parseAcademicSession(item.id, item.data(), next));
-                    entry.sessionOffline = sessionsSnapshot.metadata.fromCache;
-                    entry.ready = true;
-                    publish();
-                  } catch (error) {
-                    fail(error);
-                  }
-                },
-                (error) => {
-                  if (isCurrent()) fail(error);
-                },
-              );
-              publish();
-            } catch (error) {
-              fail(error);
-            }
-          }, fail);
+            },
+            fail,
+          );
         }
         rootReady = true;
         publish();
@@ -326,11 +375,19 @@ export function subscribeSchedule(
         );
       } else {
         rootStop = firestore.onSnapshot(
-          query(collection(db, 'enrollments'), where('studentUid', '==', uid), where('status', '==', 'active')),
+          query(
+            collection(db, 'enrollments'),
+            where('studentUid', '==', uid),
+            where('status', '==', 'active'),
+          ),
           { includeMetadataChanges: true },
           (snapshot) => {
             rootOffline = snapshot.metadata.fromCache;
-            reconcile(snapshot.docs.map((item) => item.data().classId).filter((id): id is string => typeof id === 'string'));
+            reconcile(
+              snapshot.docs
+                .map((item) => item.data().classId)
+                .filter((id): id is string => typeof id === 'string'),
+            );
           },
           fail,
         );
@@ -384,63 +441,133 @@ function watchQuery<T>(
   };
 }
 
-export function subscribeAssistantPracticums(uid: string, onChange: Change<Practicum[]>, onError: (error: unknown) => void): Stop {
-  return watchQuery('practicums', [where('assistantUid', '==', uid)], (snapshot) =>
-    snapshot.docs
-      .map((item) => parsePracticum(item.id, item.data()))
-      .sort((a, b) => a.name.localeCompare(b.name)), onChange, onError);
+export function subscribeAssistantPracticums(
+  uid: string,
+  onChange: Change<Practicum[]>,
+  onError: (error: unknown) => void,
+): Stop {
+  return watchQuery(
+    'practicums',
+    [where('assistantUid', '==', uid)],
+    (snapshot) =>
+      snapshot.docs
+        .map((item) => parsePracticum(item.id, item.data()))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    onChange,
+    onError,
+  );
 }
 
-export function subscribeAssistantClasses(uid: string, practicumId: string, onChange: Change<AcademicClass[]>, onError: (error: unknown) => void): Stop {
-  return watchQuery('classes', [
-    where('assistantUid', '==', uid), where('practicumId', '==', practicumId), orderBy('name', 'asc'),
-  ], (snapshot) => snapshot.docs.map((item) => parseAcademicClass(item.id, item.data()))
-    .sort((a, b) => a.name.localeCompare(b.name)), onChange, onError);
+export function subscribeAssistantClasses(
+  uid: string,
+  practicumId: string,
+  onChange: Change<AcademicClass[]>,
+  onError: (error: unknown) => void,
+): Stop {
+  return watchQuery(
+    'classes',
+    [
+      where('assistantUid', '==', uid),
+      where('practicumId', '==', practicumId),
+      orderBy('name', 'asc'),
+    ],
+    (snapshot) =>
+      snapshot.docs
+        .map((item) => parseAcademicClass(item.id, item.data()))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    onChange,
+    onError,
+  );
 }
 
-export function subscribeClassRoster(uid: string, classId: string, onChange: Change<Enrollment[]>, onError: (error: unknown) => void): Stop {
-  return watchQuery('enrollments', [
-    where('assistantUid', '==', uid), where('classId', '==', classId), where('status', '==', 'active'),
-  ], (snapshot) => snapshot.docs.map((item) => parseEnrollment(item.id, item.data()))
-    .sort((a, b) => a.studentNameSnapshot.localeCompare(b.studentNameSnapshot)), onChange, onError);
+export function subscribeClassRoster(
+  uid: string,
+  classId: string,
+  onChange: Change<Enrollment[]>,
+  onError: (error: unknown) => void,
+): Stop {
+  return watchQuery(
+    'enrollments',
+    [
+      where('assistantUid', '==', uid),
+      where('classId', '==', classId),
+      where('status', '==', 'active'),
+    ],
+    (snapshot) =>
+      snapshot.docs
+        .map((item) => parseEnrollment(item.id, item.data()))
+        .sort((a, b) => a.studentNameSnapshot.localeCompare(b.studentNameSnapshot)),
+    onChange,
+    onError,
+  );
 }
 
-export function subscribeClassSessions(uid: string, classId: string, onChange: Change<AcademicSession[]>, onError: (error: unknown) => void): Stop {
+export function subscribeClassSessions(
+  uid: string,
+  classId: string,
+  onChange: Change<AcademicSession[]>,
+  onError: (error: unknown) => void,
+): Stop {
   let active = true;
   let stopSnapshot = noop;
   let stopClass = noop;
   let classOffline = false;
-  void import('@/lib/firebase').then(({ db }) => import('@react-native-firebase/firestore').then((firestore) => {
-    if (!active) return;
-    stopClass = firestore.onSnapshot(doc(db, 'classes', classId), { includeMetadataChanges: true }, (classSnapshot) => {
-      if (!active || !classSnapshot.exists()) return;
-      try {
-        classOffline = classSnapshot.metadata.fromCache;
-        const classInfo = parseAcademicClass(classSnapshot.id, classSnapshot.data());
-        if (classInfo.assistantUid !== uid) throw new Error('Kelas ini tidak dapat diakses oleh akun asisten.');
-        stopSnapshot();
-        stopSnapshot = firestore.onSnapshot(
-          query(collection(db, 'classes', classId, 'sessions'), orderBy('startsAt', 'asc')),
+  void import('@/lib/firebase')
+    .then(({ db }) =>
+      import('@react-native-firebase/firestore').then((firestore) => {
+        if (!active) return;
+        stopClass = firestore.onSnapshot(
+          doc(db, 'classes', classId),
           { includeMetadataChanges: true },
-          (snapshot) => {
-            if (!active) return;
+          (classSnapshot) => {
+            if (!active || !classSnapshot.exists()) return;
             try {
-              onChange(snapshot.docs.map((item) => parseAcademicSession(item.id, item.data(), classInfo)), classOffline || snapshot.metadata.fromCache);
+              classOffline = classSnapshot.metadata.fromCache;
+              const classInfo = parseAcademicClass(classSnapshot.id, classSnapshot.data());
+              if (classInfo.assistantUid !== uid)
+                throw new Error('Kelas ini tidak dapat diakses oleh akun asisten.');
+              stopSnapshot();
+              stopSnapshot = firestore.onSnapshot(
+                query(collection(db, 'classes', classId, 'sessions'), orderBy('startsAt', 'asc')),
+                { includeMetadataChanges: true },
+                (snapshot) => {
+                  if (!active) return;
+                  try {
+                    onChange(
+                      snapshot.docs.map((item) =>
+                        parseAcademicSession(item.id, item.data(), classInfo),
+                      ),
+                      classOffline || snapshot.metadata.fromCache,
+                    );
+                  } catch (error) {
+                    onError(error);
+                  }
+                },
+                onError,
+              );
             } catch (error) {
               onError(error);
             }
           },
           onError,
         );
-      } catch (error) {
-        onError(error);
-      }
-    }, onError);
-  })).catch(onError);
-  return () => { active = false; stopClass(); stopSnapshot(); };
+      }),
+    )
+    .catch(onError);
+  return () => {
+    active = false;
+    stopClass();
+    stopSnapshot();
+  };
 }
 
-export function subscribeAssistantSession(uid: string, classId: string, sessionId: string, onChange: Change<AcademicSession | null>, onError: (error: unknown) => void): Stop {
+export function subscribeAssistantSession(
+  uid: string,
+  classId: string,
+  sessionId: string,
+  onChange: Change<AcademicSession | null>,
+  onError: (error: unknown) => void,
+): Stop {
   let active = true;
   let classInfo: AcademicClass | null = null;
   let sessionData: Record<string, unknown> | null = null;
@@ -457,47 +584,94 @@ export function subscribeAssistantSession(uid: string, classId: string, sessionI
       return;
     }
     try {
-      if (classInfo.assistantUid !== uid) throw new Error('Sesi ini tidak dapat diakses oleh akun asisten.');
-      onChange(parseAcademicSession(sessionId, sessionData, classInfo), classOffline || sessionOffline);
+      if (classInfo.assistantUid !== uid)
+        throw new Error('Sesi ini tidak dapat diakses oleh akun asisten.');
+      onChange(
+        parseAcademicSession(sessionId, sessionData, classInfo),
+        classOffline || sessionOffline,
+      );
     } catch (error) {
       onError(error);
     }
   };
-  void import('@/lib/firebase').then(({ db }) => import('@react-native-firebase/firestore').then((firestore) => {
-    if (!active) return;
-    stopClass = firestore.onSnapshot(doc(db, 'classes', classId), { includeMetadataChanges: true }, (snapshot) => {
-      if (!active) return;
-      try {
-        classInfo = snapshot.exists() ? parseAcademicClass(snapshot.id, snapshot.data()) : null;
-        classOffline = snapshot.metadata.fromCache;
-        classReady = true;
-        publish();
-      } catch (error) {
-        onError(error);
-      }
-    }, onError);
-    stopSession = firestore.onSnapshot(doc(db, 'classes', classId, 'sessions', sessionId), { includeMetadataChanges: true }, (snapshot) => {
-      if (!active) return;
-      sessionData = snapshot.exists() ? snapshot.data() : null;
-      sessionOffline = snapshot.metadata.fromCache;
-      sessionReady = true;
-      publish();
-    }, onError);
-  })).catch(onError);
-  return () => { active = false; stopClass(); stopSession(); };
+  void import('@/lib/firebase')
+    .then(({ db }) =>
+      import('@react-native-firebase/firestore').then((firestore) => {
+        if (!active) return;
+        stopClass = firestore.onSnapshot(
+          doc(db, 'classes', classId),
+          { includeMetadataChanges: true },
+          (snapshot) => {
+            if (!active) return;
+            try {
+              classInfo = snapshot.exists()
+                ? parseAcademicClass(snapshot.id, snapshot.data())
+                : null;
+              classOffline = snapshot.metadata.fromCache;
+              classReady = true;
+              publish();
+            } catch (error) {
+              onError(error);
+            }
+          },
+          onError,
+        );
+        stopSession = firestore.onSnapshot(
+          doc(db, 'classes', classId, 'sessions', sessionId),
+          { includeMetadataChanges: true },
+          (snapshot) => {
+            if (!active) return;
+            sessionData = snapshot.exists() ? snapshot.data() : null;
+            sessionOffline = snapshot.metadata.fromCache;
+            sessionReady = true;
+            publish();
+          },
+          onError,
+        );
+      }),
+    )
+    .catch(onError);
+  return () => {
+    active = false;
+    stopClass();
+    stopSession();
+  };
 }
 
-export function subscribeSessionAttendance(uid: string, sessionId: string, onChange: Change<AttendanceRecord[]>, onError: (error: unknown) => void): Stop {
-  return watchQuery('attendances', [
-    where('assistantUid', '==', uid), where('sessionId', '==', sessionId), orderBy('checkedInAt', 'desc'),
-  ], (snapshot) => snapshot.docs.map((item) => parseAttendance(item.id, item.data())), onChange, onError);
+export function subscribeSessionAttendance(
+  uid: string,
+  sessionId: string,
+  onChange: Change<AttendanceRecord[]>,
+  onError: (error: unknown) => void,
+): Stop {
+  return watchQuery(
+    'attendances',
+    [
+      where('assistantUid', '==', uid),
+      where('sessionId', '==', sessionId),
+      orderBy('checkedInAt', 'desc'),
+    ],
+    (snapshot) => snapshot.docs.map((item) => parseAttendance(item.id, item.data())),
+    onChange,
+    onError,
+  );
 }
 
-export function subscribeSessionReviewSummary(uid: string, classId: string, sessionId: string, onChange: Change<ReviewSummary>, onError: (error: unknown) => void): Stop {
-  return watchQuery('reviewSummaries', [
-    where('assistantUid', '==', uid), where('classId', '==', classId),
-  ], (snapshot) => {
-    const found = snapshot.docs.find((item) => item.id === sessionId);
-    return parseReviewSummary(sessionId, found?.data());
-  }, onChange, onError);
+export function subscribeSessionReviewSummary(
+  uid: string,
+  classId: string,
+  sessionId: string,
+  onChange: Change<ReviewSummary>,
+  onError: (error: unknown) => void,
+): Stop {
+  return watchQuery(
+    'reviewSummaries',
+    [where('assistantUid', '==', uid), where('classId', '==', classId)],
+    (snapshot) => {
+      const found = snapshot.docs.find((item) => item.id === sessionId);
+      return parseReviewSummary(sessionId, found?.data());
+    },
+    onChange,
+    onError,
+  );
 }

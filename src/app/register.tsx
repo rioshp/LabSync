@@ -32,17 +32,46 @@ export default function RegisterScreen() {
   return (
     <AuthScreen title="Buat akun." description="Daftar untuk mengakses kegiatan praktikum.">
       <View style={authStyles.form}>
-        <AuthField label="Email" value={email} onChangeText={setEmail} keyboardType="email-address"
-          autoCapitalize="none" autoCorrect={false} autoComplete="email" editable={!busy} />
-        <AuthField label="Password" value={password} onChangeText={setPassword} secureTextEntry
-          autoCapitalize="none" autoCorrect={false} autoComplete="new-password" editable={!busy} />
-        <AuthField label="Konfirmasi password" value={confirmPassword} onChangeText={setConfirmPassword}
-          secureTextEntry autoCapitalize="none" autoCorrect={false} autoComplete="new-password"
-          editable={!busy} returnKeyType="go" onSubmitEditing={submit} />
+        <AuthField
+          label="Email"
+          value={email}
+          onChangeText={setEmail}
+          keyboardType="email-address"
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="email"
+          editable={!busy}
+        />
+        <AuthField
+          label="Password"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="new-password"
+          editable={!busy}
+        />
+        <AuthField
+          label="Konfirmasi password"
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
+          secureTextEntry
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="new-password"
+          editable={!busy}
+          returnKeyType="go"
+          onSubmitEditing={submit}
+        />
         <AuthError message={error} />
         <AuthButton title="Daftar" onPress={submit} busy={busy} />
       </View>
-      {!busy && <Link href="/" style={authStyles.link}>Sudah punya akun? Masuk</Link>}
+      {!busy && (
+        <Link href="/" style={authStyles.link}>
+          Sudah punya akun? Masuk
+        </Link>
+      )}
     </AuthScreen>
   );
 }

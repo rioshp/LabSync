@@ -11,19 +11,33 @@ export function useSchedule() {
   const uid = user?.uid;
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState({
-    uid, role, sessions: [] as AcademicSession[], loading: true, error: null as string | null, offline: false,
+    uid,
+    role,
+    sessions: [] as AcademicSession[],
+    loading: true,
+    error: null as string | null,
+    offline: false,
   });
 
   useEffect(() => {
     if (!uid || !role) return;
-    return subscribeSchedule(uid, role, (schedule) => {
-      setState({ uid, role, ...schedule, error: null });
-    }, (error) => {
-      const message = error && typeof error === 'object' && 'code' in error && error.code === 'firestore/permission-denied'
-        ? 'Jadwal belum dapat diakses. Hubungi pengelola untuk memeriksa izin akses.'
-        : getAuthErrorMessage(error);
-      setState({ uid, role, sessions: [], loading: false, error: message, offline: false });
-    });
+    return subscribeSchedule(
+      uid,
+      role,
+      (schedule) => {
+        setState({ uid, role, ...schedule, error: null });
+      },
+      (error) => {
+        const message =
+          error &&
+          typeof error === 'object' &&
+          'code' in error &&
+          error.code === 'firestore/permission-denied'
+            ? 'Jadwal belum dapat diakses. Hubungi pengelola untuk memeriksa izin akses.'
+            : getAuthErrorMessage(error);
+        setState({ uid, role, sessions: [], loading: false, error: message, offline: false });
+      },
+    );
   }, [uid, role, attempt]);
 
   function retry() {
@@ -34,5 +48,11 @@ export function useSchedule() {
   if (state.uid !== uid || state.role !== role) {
     return { sessions: [], loading: true, error: null, offline: false, retry };
   }
-  return { sessions: state.sessions, loading: state.loading, error: state.error, offline: state.offline, retry };
+  return {
+    sessions: state.sessions,
+    loading: state.loading,
+    error: state.error,
+    offline: state.offline,
+    retry,
+  };
 }

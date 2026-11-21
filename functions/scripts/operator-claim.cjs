@@ -17,7 +17,9 @@ async function main() {
   if (operation === 'grant') claims.labsyncOperator = true;
   else delete claims.labsyncOperator;
   await auth.setCustomUserClaims(uid, claims);
-  process.stdout.write(`${operation === 'grant' ? 'Granted' : 'Revoked'} labsyncOperator for ${uid}. Sign in again to refresh the ID token.\n`);
+  process.stdout.write(
+    `${operation === 'grant' ? 'Granted' : 'Revoked'} labsyncOperator for ${uid}. Sign in again to refresh the ID token.\n`,
+  );
 }
 
 main().catch((error) => {

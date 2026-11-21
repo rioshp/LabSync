@@ -13,7 +13,9 @@ if (admin.apps.length === 0) admin.initializeApp();
 
 const db = admin.firestore();
 const domain = createDomain({
-  db, FieldValue, Timestamp,
+  db,
+  FieldValue,
+  Timestamp,
   getAuthUser: async (uid) => {
     try {
       return await getAuth().getUser(uid);
@@ -40,11 +42,12 @@ exports.mutate = onCall({ region: 'us-central1' }, async (request) => {
 
 exports.processReviewJobOnWrite = onDocumentWritten(
   { document: 'reviewJobs/{reviewId}', region: 'us-central1' },
-  (event) => reviewWorker.handleReviewJobEvent({
-    reviewId: event.params.reviewId,
-    before: event.data?.before,
-    after: event.data?.after,
-  }),
+  (event) =>
+    reviewWorker.handleReviewJobEvent({
+      reviewId: event.params.reviewId,
+      before: event.data?.before,
+      after: event.data?.after,
+    }),
 );
 
 exports.retryDueReviewJobs = onSchedule(
