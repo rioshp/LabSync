@@ -3,10 +3,11 @@ import { useRef, useState } from 'react';
 import { Text } from 'react-native';
 
 import { AuthButton, AuthError, AuthField } from '@/components/auth-screen';
+import { SessionStatusStyles } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
 import { mutate, mutationError } from '@/lib/mutations';
 
-import { formatTime, permitStatuses, sentiments, statuses, useLive, type Attendance, type ClassInfo,
+import { formatTime, permitStatuses, sentiments, useLive, type Attendance, type ClassInfo,
   type Permit, type Review, type Session } from './data';
 import { Card, Feedback, Page, styles } from './ui';
 
@@ -73,7 +74,7 @@ function SessionDetail({ uid, classId, sessionId }: { uid: string; classId: stri
         <Text style={styles.text}>{context.practicumName} · {context.name}</Text>
         <Text style={styles.text}>{current.room}</Text>
         <Text style={styles.text}>{formatTime(current.startsAt, context.timeZone)} – {formatTime(current.endsAt, context.timeZone)}</Text>
-        <Text style={styles.badge}>{statuses[current.status]}</Text>
+        <Text style={styles.badge}>{SessionStatusStyles[current.status].label}</Text>
         {present && <Text style={styles.text}>Hadir · {formatTime(present.checkedInAt, context.timeZone)}</Text>}
         {permit && <Text style={styles.text}>Izin · {permitStatuses[permit.status]}</Text>}
         {!loading && !error && !present && !permitBlocks && current.status === 'open' &&

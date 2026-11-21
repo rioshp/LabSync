@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 
 import { getAuthErrorMessage } from '@/lib/auth';
 import { subscribeSchedule } from '@/features/academic/listeners';
-import type { Session } from '@/types/session';
+import type { AcademicSession } from '@/features/academic/types';
 
 import { useAuth } from './useAuth';
 
@@ -11,7 +11,7 @@ export function useSchedule() {
   const uid = user?.uid;
   const [attempt, setAttempt] = useState(0);
   const [state, setState] = useState({
-    uid, role, sessions: [] as Session[], loading: true, error: null as string | null, offline: false,
+    uid, role, sessions: [] as AcademicSession[], loading: true, error: null as string | null, offline: false,
   });
 
   useEffect(() => {

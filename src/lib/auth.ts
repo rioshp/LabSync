@@ -88,10 +88,11 @@ export async function loginWithGoogle(credential: AuthCredential) {
 export function parseUserProfile(data: Record<string, unknown> | undefined): UserProfile | null {
   if (!data || typeof data.displayName !== 'string' || !data.displayName.trim()
       || (data.accountStatus !== 'active' && data.accountStatus !== 'disabled')) return null;
-  const profile = { displayName: data.displayName, name: data.displayName, accountStatus: data.accountStatus };
-  if (data.role === 'asisten' && data.nim === null) return { ...profile, role: 'asisten', nim: null } as UserProfile;
+  const { displayName, accountStatus } = data;
+  const profile: Pick<UserProfile, 'displayName' | 'accountStatus'> = { displayName, accountStatus };
+  if (data.role === 'asisten' && data.nim === null) return { ...profile, role: 'asisten', nim: null };
   if (data.role === 'praktikan' && typeof data.nim === 'string' && data.nim.trim()) {
-    return { ...profile, role: 'praktikan', nim: data.nim } as UserProfile;
+    return { ...profile, role: 'praktikan', nim: data.nim };
   }
   return null;
 }

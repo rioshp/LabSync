@@ -305,50 +305,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 21,
   },
-  roleList: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  option: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    minHeight: 68,
-    padding: 14,
-    borderWidth: 2,
-    borderRadius: 14,
-    borderColor: BrandColors.line,
-    backgroundColor: BrandColors.paper,
-  },
-  roleOption: {
-    flex: 1,
-  },
-  selectedOption: {
-    borderColor: BrandColors.forest,
-    backgroundColor: BrandColors.softGreen,
-  },
-  optionContent: {
-    flex: 1,
-    gap: 4,
-  },
-  radio: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: BrandColors.muted,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  selectedRadio: {
-    borderColor: BrandColors.forest,
-  },
-  radioDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: BrandColors.forest,
-  },
   submit: {
     minHeight: 56,
     padding: 16,
@@ -407,11 +363,4 @@ export const authStyles = {
   form: styles.form,
   link: styles.link,
   label: styles.label,
-  roles: styles.roleList,
-  role: [styles.option, styles.roleOption],
-  selectedRole: styles.selectedOption,
-  roleContent: styles.optionContent,
-  radio: styles.radio,
-  selectedRadio: styles.selectedRadio,
-  radioDot: styles.radioDot,
 };

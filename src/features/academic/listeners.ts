@@ -1,4 +1,4 @@
-import { Timestamp, collection, doc, orderBy, query, where } from '@react-native-firebase/firestore';
+import { Timestamp, collection, doc, orderBy, query, where, type QueryConstraint, type QuerySnapshot } from '@react-native-firebase/firestore';
 
 import type { Role } from '@/types/user';
 
@@ -108,7 +108,8 @@ export function parseAcademicSession(
   const startsAt = timestamp(data.startsAt, 'mulai');
   const endsAt = timestamp(data.endsAt, 'selesai');
   if (endsAt.toMillis() <= startsAt.toMillis()) throw new Error('Waktu selesai sesi harus setelah waktu mulai.');
-  const times = localParts(startsAt.toDate(), classInfo.timeZone);
+  const start = localParts(startsAt.toDate(), classInfo.timeZone);
+  const end = localParts(endsAt.toDate(), classInfo.timeZone);
   return {
     id,
     classId: classInfo.id,
@@ -119,10 +120,10 @@ export function parseAcademicSession(
     room: stringField(data, 'room'),
     startsAt,
     endsAt,
-    date: times.date,
-    endDate: localParts(endsAt.toDate(), classInfo.timeZone).date,
-    startTime: times.time,
-    endTime: localParts(endsAt.toDate(), classInfo.timeZone).time,
+    date: start.date,
+    endDate: end.date,
+    startTime: start.time,
+    endTime: end.time,
     timeZone: classInfo.timeZone,
     status,
     openedAt: optionalTimestamp(data.openedAt),
@@ -189,6 +190,7 @@ export function subscribeSchedule(
     ready: boolean;
     classOffline: boolean;
     sessionOffline: boolean;
+    sessionGeneration: number;
     stopClass: Stop;
     stopSessions: Stop;
   }>();
@@ -217,7 +219,7 @@ export function subscribeSchedule(
       a.startsAt.toMillis() - b.startsAt.toMillis() || a.id.localeCompare(b.id));
     onChange({
       sessions,
-      loading: !rootReady || values.some((entry) => !entry.info || !entry.ready),
+      loading: !rootReady || values.some((entry) => !entry.ready),
       offline: rootOffline || values.some((entry) => entry.classOffline || entry.sessionOffline),
     });
   };
@@ -243,30 +245,37 @@ export function subscribeSchedule(
         }
         for (const classId of next) {
           if (entries.has(classId)) continue;
-          const entry = { info: null as AcademicClass | null, sessions: [] as AcademicSession[], ready: false, classOffline: false, sessionOffline: false, stopClass: noop, stopSessions: noop };
+          const entry = { info: null as AcademicClass | null, sessions: [] as AcademicSession[], ready: false, classOffline: false, sessionOffline: false, sessionGeneration: 0, stopClass: noop, stopSessions: noop };
           entries.set(classId, entry);
           entry.stopClass = firestore.onSnapshot(doc(db, 'classes', classId), { includeMetadataChanges: true }, (snapshot) => {
             if (!active || entries.get(classId) !== entry) return;
             try {
               entry.classOffline = snapshot.metadata.fromCache;
-              if (!snapshot.exists()) {
+              const previous = entry.info;
+              const next = snapshot.exists() ? parseAcademicClass(snapshot.id, snapshot.data()) : null;
+              entry.info = next;
+
+              if (!next || next.status !== 'active') {
+                entry.sessionGeneration += 1;
                 entry.stopSessions();
-                entry.info = null;
-                entry.ready = true;
-                entry.sessions = [];
-                publish();
-                return;
-              }
-              const parsed = parseAcademicClass(snapshot.id, snapshot.data());
-              entry.info = parsed;
-              const visible = parsed.status === 'active';
-              if (!visible) {
-                entry.stopSessions();
+                entry.stopSessions = noop;
                 entry.sessions = [];
                 entry.sessionOffline = false;
                 entry.ready = true;
                 publish();
                 return;
+              }
+
+              // Cache metadata does not change the session query or its class display values.
+              if (previous?.status === 'active' && previous.name === next.name &&
+                previous.practicumName === next.practicumName && previous.timeZone === next.timeZone) {
+                publish();
+                return;
+              }
+
+              const generation = ++entry.sessionGeneration;
+              function isCurrent() {
+                return active && entries.get(classId) === entry && entry.sessionGeneration === generation;
               }
               entry.stopSessions();
               entry.ready = false;
@@ -279,10 +288,10 @@ export function subscribeSchedule(
                 ),
                 { includeMetadataChanges: true },
                 (sessionsSnapshot) => {
-                  if (!active || entries.get(classId) !== entry || !entry.info) return;
+                  if (!isCurrent()) return;
                   try {
                     entry.sessions = sessionsSnapshot.docs.map((item) =>
-                      parseAcademicSession(item.id, item.data(), entry.info!));
+                      parseAcademicSession(item.id, item.data(), next));
                     entry.sessionOffline = sessionsSnapshot.metadata.fromCache;
                     entry.ready = true;
                     publish();
@@ -290,7 +299,9 @@ export function subscribeSchedule(
                     fail(error);
                   }
                 },
-                fail,
+                (error) => {
+                  if (isCurrent()) fail(error);
+                },
               );
               publish();
             } catch (error) {
@@ -333,70 +344,65 @@ export function subscribeSchedule(
   return stop;
 }
 
-export function subscribeAssistantPracticums(uid: string, onChange: Change<Practicum[]>, onError: (error: unknown) => void): Stop {
+/** Share the attach, error, and cleanup behavior for independent Firestore queries. */
+function watchQuery<T>(
+  path: string,
+  constraints: QueryConstraint[],
+  select: (snapshot: QuerySnapshot) => T,
+  onChange: Change<T>,
+  onError: (error: unknown) => void,
+): Stop {
   let active = true;
-  let stopSnapshot = noop;
-  void import('@/lib/firebase').then(({ db }) => import('@react-native-firebase/firestore').then((firestore) => {
-    if (!active) return;
-    stopSnapshot = firestore.onSnapshot(
-      query(firestore.collection(db, 'practicums'), where('assistantUid', '==', uid)),
-      { includeMetadataChanges: true },
-      (snapshot) => {
-        if (!active) return;
-        try {
-          onChange(snapshot.docs.map((item) => parsePracticum(item.id, item.data())).sort((a, b) => a.name.localeCompare(b.name)), snapshot.metadata.fromCache);
-        } catch (error) {
-          onError(error);
-        }
-      },
-      onError,
-    );
-  })).catch(onError);
-  return () => { active = false; stopSnapshot(); };
+  let unsubscribe = noop;
+
+  function reportError(error: unknown) {
+    if (active) onError(error);
+  }
+
+  void Promise.all([import('@/lib/firebase'), import('@react-native-firebase/firestore')])
+    .then(([{ db }, firestore]) => {
+      if (!active) return;
+      unsubscribe = firestore.onSnapshot(
+        query(collection(db, path), ...constraints),
+        { includeMetadataChanges: true },
+        (snapshot) => {
+          if (!active) return;
+          try {
+            onChange(select(snapshot), snapshot.metadata.fromCache);
+          } catch (error) {
+            reportError(error);
+          }
+        },
+        reportError,
+      );
+    })
+    .catch(reportError);
+
+  return () => {
+    active = false;
+    unsubscribe();
+  };
+}
+
+export function subscribeAssistantPracticums(uid: string, onChange: Change<Practicum[]>, onError: (error: unknown) => void): Stop {
+  return watchQuery('practicums', [where('assistantUid', '==', uid)], (snapshot) =>
+    snapshot.docs
+      .map((item) => parsePracticum(item.id, item.data()))
+      .sort((a, b) => a.name.localeCompare(b.name)), onChange, onError);
 }
 
 export function subscribeAssistantClasses(uid: string, practicumId: string, onChange: Change<AcademicClass[]>, onError: (error: unknown) => void): Stop {
-  let active = true;
-  let stopSnapshot = noop;
-  void import('@/lib/firebase').then(({ db }) => import('@react-native-firebase/firestore').then((firestore) => {
-    if (!active) return;
-    stopSnapshot = firestore.onSnapshot(
-      query(firestore.collection(db, 'classes'), where('assistantUid', '==', uid), where('practicumId', '==', practicumId), orderBy('name', 'asc')),
-      { includeMetadataChanges: true },
-      (snapshot) => {
-        if (!active) return;
-        try {
-          onChange(snapshot.docs.map((item) => parseAcademicClass(item.id, item.data())).sort((a, b) => a.name.localeCompare(b.name)), snapshot.metadata.fromCache);
-        } catch (error) {
-          onError(error);
-        }
-      },
-      onError,
-    );
-  })).catch(onError);
-  return () => { active = false; stopSnapshot(); };
+  return watchQuery('classes', [
+    where('assistantUid', '==', uid), where('practicumId', '==', practicumId), orderBy('name', 'asc'),
+  ], (snapshot) => snapshot.docs.map((item) => parseAcademicClass(item.id, item.data()))
+    .sort((a, b) => a.name.localeCompare(b.name)), onChange, onError);
 }
 
 export function subscribeClassRoster(uid: string, classId: string, onChange: Change<Enrollment[]>, onError: (error: unknown) => void): Stop {
-  let active = true;
-  let stopSnapshot = noop;
-  void import('@/lib/firebase').then(({ db }) => import('@react-native-firebase/firestore').then((firestore) => {
-    if (!active) return;
-    stopSnapshot = firestore.onSnapshot(
-      query(firestore.collection(db, 'enrollments'), where('assistantUid', '==', uid), where('classId', '==', classId), where('status', '==', 'active')),
-      { includeMetadataChanges: true },
-      (snapshot) => {
-        if (!active) return;
-        try {
-          onChange(snapshot.docs.map((item) => parseEnrollment(item.id, item.data())).sort((a, b) => a.studentNameSnapshot.localeCompare(b.studentNameSnapshot)), snapshot.metadata.fromCache);
-        } catch (error) {
-          onError(error);
-        }
-      },
-      onError,
-    );
-  })).catch(onError);
-  return () => { active = false; stopSnapshot(); };
+  return watchQuery('enrollments', [
+    where('assistantUid', '==', uid), where('classId', '==', classId), where('status', '==', 'active'),
+  ], (snapshot) => snapshot.docs.map((item) => parseEnrollment(item.id, item.data()))
+    .sort((a, b) => a.studentNameSnapshot.localeCompare(b.studentNameSnapshot)), onChange, onError);
 }
 
 export function subscribeClassSessions(uid: string, classId: string, onChange: Change<AcademicSession[]>, onError: (error: unknown) => void): Stop {
@@ -482,38 +488,16 @@ export function subscribeAssistantSession(uid: string, classId: string, sessionI
 }
 
 export function subscribeSessionAttendance(uid: string, sessionId: string, onChange: Change<AttendanceRecord[]>, onError: (error: unknown) => void): Stop {
-  let active = true;
-  let stopSnapshot = noop;
-  void import('@/lib/firebase').then(({ db }) => import('@react-native-firebase/firestore').then((firestore) => {
-    if (!active) return;
-    stopSnapshot = firestore.onSnapshot(
-      query(firestore.collection(db, 'attendances'), where('assistantUid', '==', uid), where('sessionId', '==', sessionId), orderBy('checkedInAt', 'desc')),
-      { includeMetadataChanges: true },
-      (snapshot) => {
-        if (!active) return;
-        try { onChange(snapshot.docs.map((item) => parseAttendance(item.id, item.data())), snapshot.metadata.fromCache); } catch (error) { onError(error); }
-      },
-      onError,
-    );
-  })).catch(onError);
-  return () => { active = false; stopSnapshot(); };
+  return watchQuery('attendances', [
+    where('assistantUid', '==', uid), where('sessionId', '==', sessionId), orderBy('checkedInAt', 'desc'),
+  ], (snapshot) => snapshot.docs.map((item) => parseAttendance(item.id, item.data())), onChange, onError);
 }
 
 export function subscribeSessionReviewSummary(uid: string, classId: string, sessionId: string, onChange: Change<ReviewSummary>, onError: (error: unknown) => void): Stop {
-  let active = true;
-  let stopSnapshot = noop;
-  void import('@/lib/firebase').then(({ db }) => import('@react-native-firebase/firestore').then((firestore) => {
-    if (!active) return;
-    stopSnapshot = firestore.onSnapshot(
-      query(firestore.collection(db, 'reviewSummaries'), where('assistantUid', '==', uid), where('classId', '==', classId)),
-      { includeMetadataChanges: true },
-      (snapshot) => {
-        if (!active) return;
-        const found = snapshot.docs.find((item) => item.id === sessionId);
-        onChange(parseReviewSummary(sessionId, found?.data()), snapshot.metadata.fromCache);
-      },
-      onError,
-    );
-  })).catch(onError);
-  return () => { active = false; stopSnapshot(); };
+  return watchQuery('reviewSummaries', [
+    where('assistantUid', '==', uid), where('classId', '==', classId),
+  ], (snapshot) => {
+    const found = snapshot.docs.find((item) => item.id === sessionId);
+    return parseReviewSummary(sessionId, found?.data());
+  }, onChange, onError);
 }

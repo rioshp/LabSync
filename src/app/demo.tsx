@@ -3,10 +3,10 @@ import { useReducer, useState } from 'react';
 import { Text } from 'react-native';
 
 import { AuthButton } from '@/components/auth-screen';
+import { SessionStatusStyles } from '@/constants/theme';
 import { demoReducer, fixtures, identities, initialDemo } from '@/features/demo/state';
 import { Card, Confirm, Page, styles } from '@/features/participation/ui';
 
-const labels = { scheduled: 'Belum dibuka', open: 'Terbuka', closed: 'Selesai' };
 const format = (time: number) => new Date(time).toLocaleString('id-ID');
 
 export default function LocalDemo() {
@@ -35,7 +35,7 @@ export default function LocalDemo() {
       <Card title={selected.title}>
         <Text style={styles.text}>{selected.practicum} · {selected.className}</Text>
         <Text style={styles.text}>{selected.room} · {selected.time}</Text>
-        <Text style={styles.badge}>{labels[status]}</Text>
+        <Text style={styles.badge}>{SessionStatusStyles[status].label}</Text>
         {actor.role === 'asisten' && status !== 'closed' && <AuthButton
           title={status === 'open' ? 'Tutup sesi' : 'Buka sesi'} onPress={() => setConfirm(status === 'open' ? 'close' : 'open')} />}
         {actor.role === 'praktikan' && mine && <Text accessibilityLiveRegion="polite" style={styles.text}>
@@ -60,7 +60,7 @@ export default function LocalDemo() {
     </> : <>
       {fixtures.map((session) => <Card key={session.id} title={session.title}>
         <Text style={styles.text}>{session.practicum} · {session.className} · {session.time}</Text>
-        <Text style={styles.badge}>{labels[state.status[session.id] ?? 'scheduled']}</Text>
+        <Text style={styles.badge}>{SessionStatusStyles[state.status[session.id] ?? 'scheduled'].label}</Text>
         <AuthButton title="Lihat detail" onPress={() => setSelected(session)} />
       </Card>)}
       {actor.role === 'praktikan' && <Card title="Riwayat saya">

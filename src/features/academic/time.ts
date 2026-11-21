@@ -1,3 +1,5 @@
+import type { AcademicSession } from './types';
+
 function readZonedParts(date: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat('en-GB', {
     timeZone,
@@ -52,7 +54,9 @@ export function zonedDateTimeToEpochMs(dateText: string, timeText: string, timeZ
   return epoch;
 }
 
-export function formatSessionRange(date: string, startTime: string, endDate: string, endTime: string, timeZone: string) {
+type SessionRange = Pick<AcademicSession, 'date' | 'startTime' | 'endDate' | 'endTime' | 'timeZone'>;
+
+export function formatSessionRange({ date, startTime, endDate, endTime, timeZone }: SessionRange) {
   const range = date === endDate ? `${date} · ${startTime}–${endTime}` : `${date} ${startTime}–${endDate} ${endTime}`;
   return `${range} · ${timeZone}`;
 }

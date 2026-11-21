@@ -8,6 +8,13 @@ Aplikasi React Native untuk praktikum: jadwal kelas, sesi, presensi realtime, iz
 - `functions` berisi backend, worker sentimen, skrip operator, dan tes. Lihat [kontrak backend](functions/README.md).
 - `firestore.rules` dan `firestore.indexes.json` mengikuti skema Sprint 2. Aplikasi membaca melalui Firestore dan mengubah data melalui fungsi `mutate`.
 
+## Membaca kode
+
+- Mulai dari URL atau tab di `src/app`. File rute menunjuk ke layar di `src/features`; gaya layar akademik berada di file `.styles.ts` di sebelahnya.
+- Baca `src/features/academic/listeners.ts` untuk alur jadwal. Daftar kelas menentukan listener sesi yang perlu hidup. Perubahan metadata cache hanya mengubah indikator koneksi. Listener sesi lama tidak boleh mengisi kembali kelas yang sudah diarsipkan atau dilepas.
+- Alur baca dan tulis terpisah. Layar mendengarkan Firestore melalui hook dan mengirim perubahan melalui `src/lib/mutations.ts`. Backend memeriksa peran dan kepemilikan sebelum commit.
+- Backend masuk lewat `functions/index.cjs`. `validation.cjs` memvalidasi kontrak input, `domain.cjs` menangani otorisasi dan transaksi, dan `review-worker.cjs` memproses sentimen ulasan. Keputusan izin ada di transaksi asisten.
+
 ## Jalankan dan verifikasi
 
 Gunakan versi Node yang didukung Expo dan runtime Functions. Untuk Emulator Suite, siapkan Firebase CLI dan Java 21 atau lebih baru.

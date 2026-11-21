@@ -1,9 +1,6 @@
 const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const path = require('node:path');
 const test = require('node:test');
-const vm = require('node:vm');
-const ts = require('typescript');
+const { loadTypeScript } = require('./load-typescript.cjs');
 
 class Timestamp {
   constructor(milliseconds) { this.milliseconds = milliseconds; }
@@ -37,15 +34,8 @@ function setup() {
       },
     },
   };
-  const source = fs.readFileSync(path.join(__dirname, '../src/features/academic/listeners.ts'), 'utf8');
-  const { outputText } = ts.transpileModule(source, {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-  });
-  const module = { exports: {} };
-  vm.runInThisContext(`(function(require, module, exports) { ${outputText}\n})`)(
-    (name) => dependencies[name], module, module.exports,
-  );
-  return { ...module.exports, listeners };
+  const api = loadTypeScript('src/features/academic/listeners.ts', dependencies);
+  return { ...api, listeners };
 }
 
 const classData = (overrides = {}) => ({
@@ -185,6 +175,26 @@ test('archived classes stop contributing to the live schedule', async () => {
   emitDocument(classDoc, 'class-a', classData({ status: 'archived' }));
   assert.deepEqual(s.latest.sessions, []);
   assert.equal(sessions.stopped, true);
+  const count = s.states.length;
+  emit(sessions, [['stale-session', sessionData()]], true);
+  assert.equal(s.states.length, count);
+  s.stop();
+});
+
+test('class metadata changes do not restart the session listener', async () => {
+  const s = await subscribe('asisten', 'assistant-a');
+  emit(s.listeners[0], [['class-a', classData()]]);
+  const classDoc = findListener(s.listeners, (listener) => docPath(listener) === 'classes/class-a');
+  emitDocument(classDoc, 'class-a', classData(), true);
+  const sessions = findListener(s.listeners, (listener) => collectionPath(listener) === 'classes/class-a/sessions');
+  emit(sessions, [['session-a', sessionData()]]);
+  const listenerCount = s.listeners.length;
+
+  emitDocument(classDoc, 'class-a', classData());
+  assert.equal(s.listeners.length, listenerCount);
+  assert.equal(sessions.stopped, false);
+  assert.equal(s.latest.loading, false);
+  assert.equal(s.latest.offline, false);
   s.stop();
 });
 

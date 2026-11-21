@@ -14,20 +14,10 @@ export const BrandColors = {
   pageBackground: '#F4FAF7',
 } as const;
 
-export const SessionStatusColors = {
-  BELUM_DIBUKA: {
-    bg: '#FEF6DB',
-    text: '#8A6100',
-    label: 'Belum Dibuka',
-  },
-  DIBUKA: {
-    bg: '#E3F1E5',
-    text: '#0B4B46',
-    label: 'Sedang Dibuka',
-  },
-  DITUTUP: {
-    bg: '#FDEAEA',
-    text: '#B93838',
-    label: 'Sesi Ditutup',
-  },
+/** One presentation for the statuses stored in Firestore and used by the local demo. */
+export const SessionStatusStyles = {
+  scheduled: { label: 'Belum dibuka', bg: '#FEF6DB', text: '#8A6100' },
+  open: { label: 'Terbuka', bg: '#E3F1E5', text: '#0B4B46' },
+  closed: { label: 'Selesai', bg: '#FDEAEA', text: '#B93838' },
+  cancelled: { label: 'Dibatalkan', bg: '#F1E8E7', text: '#775450' },
 } as const;

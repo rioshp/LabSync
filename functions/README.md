@@ -2,6 +2,8 @@
 
 Deploy from `LabSync/` with the Firebase CLI after installing the dependencies in this directory. The callable endpoint is `mutate` in `us-central1`; all inputs are checked against an action-specific allowlist. Client applications must call this function for application writes. Firestore rules should deny direct client writes to every application collection.
 
+`index.cjs` is the Firebase entry point. `validation.cjs` validates inputs independently of Firestore, while `domain.cjs` owns authorization, transactions, and retry receipts. `review-worker.cjs` owns review job leases and summary updates.
+
 ## Callable contract
 
 All requests have `{ action, ...fields }`. Authenticated users need an active profile for academic actions. New accounts call `completeProfile { displayName, nim }` after verifying their Firebase Auth email. Only this onboarding action can create a student profile. The backend takes the UID and verified-email claim from Firebase Auth.
@@ -40,7 +42,7 @@ Use a trusted environment with Application Default Credentials for the Firebase 
 
 ```sh
 cd LabSync/functions
-npm install
+npm ci
 GOOGLE_CLOUD_PROJECT=your-firebase-project node scripts/operator-claim.cjs FIREBASE_AUTH_UID grant
 ```
 

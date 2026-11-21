@@ -1,13 +1,15 @@
 import { collection, doc, documentId, limit, onSnapshot, orderBy, query, where, type Timestamp } from '@react-native-firebase/firestore';
 import { useEffect, useState } from 'react';
 
+import type { AcademicSessionStatus } from '@/features/academic/types';
+
 export type Session = {
   assistantUid: string;
   moduleTitle: string;
   room: string;
   startsAt: Timestamp;
   endsAt: Timestamp;
-  status: 'scheduled' | 'open' | 'closed' | 'cancelled';
+  status: AcademicSessionStatus;
 };
 export type ClassInfo = { name: string; practicumName: string; timeZone: string };
 type Snapshot = { className: string; practicumName: string; moduleTitle: string; startsAt: Timestamp; timeZone: string };
@@ -25,7 +27,6 @@ export type Review = {
   sentiment: 'positive' | 'neutral' | 'negative' | null; text: string;
 };
 
-export const statuses = { scheduled: 'Belum dibuka', open: 'Terbuka', closed: 'Selesai', cancelled: 'Dibatalkan' };
 export const permitStatuses = { pending: 'Menunggu', approved: 'Disetujui', rejected: 'Ditolak' };
 export const sentiments = { positive: 'Positif', neutral: 'Netral', negative: 'Negatif' };
 
@@ -38,6 +39,7 @@ type LiveState<T> = { data: T | null; loading: boolean; error: string | null; of
 type Source = { path: string; kind: 'doc' | 'list'; filters?: Filter[]; order?: string; pageSize?: number };
 const initial = { data: null, loading: true, error: null, offline: false };
 
+/** Scope subscriptions to the signed-in account and wait for server confirmation before showing cached data. */
 export function useLive<T>(scope: string, source: Source | null, attempt = 0): LiveState<T> {
   const encoded = source && JSON.stringify(source);
   const key = JSON.stringify([scope, encoded, attempt]);
