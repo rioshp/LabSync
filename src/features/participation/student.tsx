@@ -2,13 +2,13 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { useRef, useState } from 'react';
 import { Text } from 'react-native';
 
+import { formatDateTime } from '@/features/academic/time';
 import { AuthButton, AuthError, AuthField } from '@/components/auth-screen';
 import { SessionStatusStyles } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
 import { mutate, mutationError } from '@/lib/mutations';
 
 import {
-  formatTime,
   permitStatuses,
   sentiments,
   useLive,
@@ -27,17 +27,9 @@ function useContextIds() {
   return { uid: role === 'praktikan' ? user?.uid : undefined, classId, sessionId };
 }
 
-function ownRecord(path: string, uid: string | undefined, sessionId: string | undefined) {
-  return uid && sessionId
-    ? {
-        kind: 'list' as const,
-        path,
-        filters: [
-          { field: 'studentUid', value: uid },
-          { field: '__name__', value: sessionId + '~' + uid },
-        ],
-      }
-    : null;
+// Firestore memperbolehkan pembacaan dokumen sendiri meski catatan belum dibuat.
+function ownRecord(path: 'attendances' | 'permits' | 'reviews', uid: string, sessionId: string) {
+  return { kind: 'doc' as const, path: `${path}/${sessionId}~${uid}` };
 }
 
 export function StudentSession() {
@@ -79,19 +71,19 @@ function SessionDetail({
     { kind: 'doc', path: 'classes/' + classId + '/sessions/' + sessionId },
     attempt,
   );
-  const attendance = useLive<Attendance[]>(uid, ownRecord('attendances', uid, sessionId), attempt);
-  const permits = useLive<Permit[]>(uid, ownRecord('permits', uid, sessionId), attempt);
+  const attendance = useLive<Attendance>(uid, ownRecord('attendances', uid, sessionId), attempt);
+  const permits = useLive<Permit>(uid, ownRecord('permits', uid, sessionId), attempt);
   const connectedData = [classInfo, session, attendance, permits];
   const error = connectedData.find((source) => source.error)?.error ?? null;
   const loading = connectedData.some((source) => source.loading);
   const offline = connectedData.some((source) => source.offline);
   const current = session.data;
   const context = classInfo.data;
-  const present = attendance.data?.[0];
-  const permit = permits.data?.[0];
+  const present = attendance.data;
+  const permit = permits.data;
   const permitBlocks = permit && permit.status !== 'rejected';
   const canReview = !!present && current?.status === 'closed';
-  const reviews = useLive<Review[]>(
+  const reviews = useLive<Review>(
     uid,
     canReview ? ownRecord('reviews', uid, sessionId) : null,
     attempt,
@@ -125,18 +117,16 @@ function SessionDetail({
       {!loading && !error && (!current || !context) && <Card title="Sesi tidak ditemukan." />}
       {current && context && (
         <Card title={current.moduleTitle}>
-          <Text style={styles.text}>
-            {context.practicumName} · {context.name}
-          </Text>
+          <Text style={styles.text}>{context.name}</Text>
           <Text style={styles.text}>{current.room}</Text>
           <Text style={styles.text}>
-            {formatTime(current.startsAt, context.timeZone)} –{' '}
-            {formatTime(current.endsAt, context.timeZone)}
+            {formatDateTime(current.startsAt.toDate(), context.timeZone)} –{' '}
+            {formatDateTime(current.endsAt.toDate(), context.timeZone)}
           </Text>
           <Text style={styles.badge}>{SessionStatusStyles[current.status].label}</Text>
           {present && (
             <Text style={styles.text}>
-              Hadir · {formatTime(present.checkedInAt, context.timeZone)}
+              Hadir · {formatDateTime(present.checkedInAt.toDate(), context.timeZone)}
             </Text>
           )}
           {permit && <Text style={styles.text}>Izin · {permitStatuses[permit.status]}</Text>}
@@ -164,9 +154,9 @@ function SessionDetail({
                 }
               />
             )}
-          {canReview && reviews.data && (
+          {canReview && !reviews.loading && !reviews.error && (
             <AuthButton
-              title={reviews.data.length ? 'Lihat ulasan' : 'Tulis ulasan'}
+              title={reviews.data ? 'Lihat ulasan' : 'Tulis ulasan'}
               onPress={() =>
                 router.push({ pathname: '/praktikan/ulasan', params: { classId, sessionId } })
               }
@@ -219,19 +209,20 @@ function ParticipationForm({
   const lock = useRef(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const previous = useLive<(Permit | Review)[]>(
+  const previous = useLive<Permit | Review>(
     uid,
     ownRecord(review ? 'reviews' : 'permits', uid, sessionId),
     attempt,
   );
-  const record = previous.data?.[0];
+  const record = previous.data;
+  const canCreate = !previous.loading && !previous.error && !record && !sent;
   const attendanceId = sessionId + '~' + uid;
-  const checkingReview = review && !record && !sent && !!previous.data && !previous.offline;
+  const checkingReview = review && canCreate && !previous.offline;
   const reviewAccess = useReviewAccess(checkingReview ? [attendanceId] : [], attempt);
   const access = reviewAccess.access?.[attendanceId];
   const reviewAllowed = access?.state === 'ready' && access.classId === classId;
   const reviewAlreadySubmitted = access?.state === 'submitted' && access.classId === classId;
-  const showForm = !record && !sent && !!previous.data && (!review || reviewAllowed);
+  const showForm = canCreate && (!review || reviewAllowed);
 
   async function send() {
     if (lock.current) return;
@@ -282,11 +273,7 @@ function ParticipationForm({
         </Card>
       )}
       {sent && !record && (
-        <Card
-          title={
-            review ? 'Ulasan tersimpan. Menunggu analisis.' : 'Izin tersimpan. Menunggu keputusan.'
-          }
-        />
+        <Card title={review ? 'Ulasan tersimpan.' : 'Izin tersimpan. Menunggu keputusan.'} />
       )}
       {checkingReview &&
         !reviewAllowed &&
@@ -370,11 +357,9 @@ function History({ uid }: { uid: string }) {
       )}
       {attendances.data?.map((item) => (
         <Card key={item.id} title={item.sessionSnapshot.moduleTitle}>
+          <Text style={styles.text}>{item.sessionSnapshot.className}</Text>
           <Text style={styles.text}>
-            {item.sessionSnapshot.practicumName} · {item.sessionSnapshot.className}
-          </Text>
-          <Text style={styles.text}>
-            {formatTime(item.checkedInAt, item.sessionSnapshot.timeZone)}
+            {formatDateTime(item.checkedInAt.toDate(), item.sessionSnapshot.timeZone)}
           </Text>
           {reviewAccess.access?.[item.id]?.state === 'submitted' ||
           reviewAccess.access?.[item.id]?.state === 'ready' ? (
@@ -400,9 +385,7 @@ function History({ uid }: { uid: string }) {
       {permits.data?.length === 0 && <Card title="Belum ada pengajuan izin." />}
       {permits.data?.map((permit) => (
         <Card key={permit.id} title={permit.sessionSnapshot.moduleTitle}>
-          <Text style={styles.text}>
-            {permit.sessionSnapshot.practicumName} · {permit.sessionSnapshot.className}
-          </Text>
+          <Text style={styles.text}>{permit.sessionSnapshot.className}</Text>
           <Text style={styles.badge}>{permitStatuses[permit.status]}</Text>
           <Text style={styles.text}>{permit.reason}</Text>
           {permit.decisionNote && (

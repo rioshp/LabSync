@@ -224,6 +224,16 @@ test('assistant CRUD and enrollment enable only the correct class listener', asy
   }));
   const sessions = collection(student.db, 'classes', classId, 'sessions');
   assert.equal((await getDocsFromServer(sessions)).size, 2);
+  assert.ok((await getDocFromServer(doc(student.db, 'classes', classId))).exists());
+  assert.ok(
+    (await getDocFromServer(doc(student.db, 'classes', classId, 'sessions', sessionId))).exists(),
+  );
+  const recordId = sessionId + '~' + student.uid;
+  for (const collectionName of ['attendances', 'permits', 'reviews']) {
+    const own = await getDocFromServer(doc(student.db, collectionName, recordId));
+    assert.equal(own.exists(), false);
+    await assert.rejects(getDocFromServer(doc(outsider.db, collectionName, recordId)), denied);
+  }
   await assert.rejects(
     getDocsFromServer(collection(outsider.db, 'classes', classId, 'sessions')),
     denied,

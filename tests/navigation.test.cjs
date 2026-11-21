@@ -318,3 +318,50 @@ test('session detail opens the selected tab and loads data only for that tab', (
   reviews.find((node) => node.props.children?.props?.children === '‹ Kembali').props.onPress();
   assert.equal(backed, true);
 });
+
+test('an enrolled student can check in before attendance or permit documents exist', () => {
+  const time = { toDate: () => new Date(0) };
+  const data = {
+    'classes/kelas-a': { name: 'Basis Data', timeZone: 'Asia/Jakarta' },
+    'classes/kelas-a/sessions/sesi-a': {
+      moduleTitle: 'Kueri SQL',
+      room: 'Lab',
+      startsAt: time,
+      endsAt: time,
+      status: 'open',
+    },
+  };
+  const reads = [];
+  const { StudentSession } = loadTypeScript('src/features/participation/student.tsx', {
+    'expo-router': { useLocalSearchParams: () => ({ classId: 'kelas-a', sessionId: 'sesi-a' }) },
+    react: { useState: (initial) => [initial, () => {}], useRef: (current) => ({ current }) },
+    'react-native': { Text: 'text' },
+    '@/features/academic/time': { formatDateTime: () => '09.00' },
+    '@/components/auth-screen': { AuthButton: 'auth-button', AuthError: 'auth-error' },
+    '@/constants/theme': { SessionStatusStyles: { open: { label: 'Dibuka' } } },
+    '@/hooks/useAuth': { useAuth: () => ({ user: { uid: 'praktikan-a' }, role: 'praktikan' }) },
+    '@/lib/mutations': {},
+    './data': {
+      useLive: (_uid, source) => {
+        if (source) reads.push(source);
+        return { data: data[source?.path] ?? null, loading: false, error: null, offline: false };
+      },
+    },
+    './ui': { Page: 'page', Feedback: 'feedback', Card: 'card', styles: {} },
+    './use-review-access': {},
+  });
+  const detail = StudentSession();
+  const nodes = elements(detail.type(detail.props));
+  assert.deepEqual(
+    reads.map(({ kind, path }) => [kind, path]),
+    [
+      ['doc', 'classes/kelas-a'],
+      ['doc', 'classes/kelas-a/sessions/sesi-a'],
+      ['doc', 'attendances/sesi-a~praktikan-a'],
+      ['doc', 'permits/sesi-a~praktikan-a'],
+    ],
+  );
+  for (const title of ['Presensi sekarang', 'Ajukan izin']) {
+    assert.ok(nodes.some(({ type, props }) => type === 'auth-button' && props.title === title));
+  }
+});

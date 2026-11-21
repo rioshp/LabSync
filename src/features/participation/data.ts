@@ -1,7 +1,6 @@
 import {
   collection,
   doc,
-  documentId,
   limit,
   onSnapshot,
   orderBy,
@@ -12,6 +11,7 @@ import {
 import { useEffect, useState } from 'react';
 
 import type { AcademicSessionStatus } from '@/features/academic/types';
+import { firebaseErrorCode } from '@/lib/firebase-error';
 
 export type Session = {
   assistantUid: string;
@@ -60,12 +60,6 @@ export type Review = {
 export const permitStatuses = { pending: 'Menunggu', approved: 'Disetujui', rejected: 'Ditolak' };
 export const sentiments = { positive: 'Positif', neutral: 'Netral', negative: 'Negatif' };
 
-export function formatTime(value: Timestamp, timeZone: string) {
-  return value
-    .toDate()
-    .toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short', timeZone });
-}
-
 type Filter = { field: string; value: string };
 type LiveState<T> = { data: T | null; loading: boolean; error: string | null; offline: boolean };
 type Source = {
@@ -96,11 +90,11 @@ export function useLive<T>(scope: string, source: Source | null, attempt = 0): L
       if (active) setState({ key, value: { data, offline, error, loading: false } });
     }
     function onError(error: unknown) {
-      const code = error && typeof error === 'object' && 'code' in error ? String(error.code) : '';
+      clearTimeout(timer);
       update(
         null,
         false,
-        code.endsWith('permission-denied')
+        firebaseErrorCode(error) === 'permission-denied'
           ? 'Kamu tidak memiliki akses ke data ini.'
           : 'Data gagal dimuat. Periksa koneksi dan coba lagi.',
       );
@@ -127,9 +121,7 @@ export function useLive<T>(scope: string, source: Source | null, attempt = 0): L
           );
           return;
         }
-        const filters = (spec.filters ?? []).map(({ field, value }) =>
-          where(field === '__name__' ? documentId() : field, '==', value),
-        );
+        const filters = (spec.filters ?? []).map(({ field, value }) => where(field, '==', value));
         const options = [
           ...filters,
           ...(spec.order ? [orderBy(spec.order, 'desc')] : []),

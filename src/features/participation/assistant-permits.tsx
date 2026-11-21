@@ -1,11 +1,12 @@
 import { useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
+import { formatDateTime } from '@/features/academic/time';
 import { AuthButton, AuthError, AuthField } from '@/components/auth-screen';
 import { useAuth } from '@/hooks/useAuth';
 import { mutate, mutationError } from '@/lib/mutations';
 
-import { formatTime, permitStatuses, useLive, type Permit } from './data';
+import { permitStatuses, useLive, type Permit } from './data';
 import { Card, Confirm, Feedback, Page, styles } from './ui';
 
 type Decision = 'approved' | 'rejected';
@@ -97,10 +98,10 @@ function PermitInbox({ uid }: { uid: string }) {
             NIM {permit.nimSnapshot} · {permit.sessionSnapshot.className}
           </Text>
           <Text style={styles.text}>
-            {permit.sessionSnapshot.practicumName} · {permit.sessionSnapshot.moduleTitle}
+            {permit.sessionSnapshot.className} · {permit.sessionSnapshot.moduleTitle}
           </Text>
           <Text style={styles.text}>
-            {formatTime(permit.submittedAt, permit.sessionSnapshot.timeZone)}
+            {formatDateTime(permit.submittedAt.toDate(), permit.sessionSnapshot.timeZone)}
           </Text>
           <Text style={styles.badge}>{permitStatuses[permit.status]}</Text>
           <Text style={styles.text}>{permit.reason}</Text>
