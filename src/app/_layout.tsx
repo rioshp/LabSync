@@ -1,5 +1,6 @@
 import { Stack } from 'expo-router';
 
+import { AssistantClassesProvider } from '@/features/academic/useAcademic';
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
 
 export default function RootLayout() {
@@ -11,17 +12,29 @@ export default function RootLayout() {
 }
 
 function RootNavigator() {
-  const { user, phase } = useAuth();
+  const { user, phase, role } = useAuth();
   const signedIn = phase === 'active';
+
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="index" />
-      <Stack.Protected guard={!user}>
-        <Stack.Screen name="register" />
-      </Stack.Protected>
-      <Stack.Protected guard={signedIn}>
-        <Stack.Screen name="(app)" />
-      </Stack.Protected>
-    </Stack>
+    <AssistantClassesProvider uid={signedIn && role === 'asisten' ? user?.uid : undefined}>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="index" />
+        <Stack.Protected guard={!user}>
+          <Stack.Screen name="register" />
+        </Stack.Protected>
+        <Stack.Protected guard={signedIn}>
+          <Stack.Screen name="(tabs)" />
+          <Stack.Protected guard={role === 'asisten'}>
+            <Stack.Screen name="asisten/kelas" />
+            <Stack.Screen name="asisten/sesi" />
+          </Stack.Protected>
+          <Stack.Protected guard={role === 'praktikan'}>
+            <Stack.Screen name="praktikan/presensi" />
+            <Stack.Screen name="praktikan/ajukan-izin" />
+            <Stack.Screen name="praktikan/ulasan" />
+          </Stack.Protected>
+        </Stack.Protected>
+      </Stack>
+    </AssistantClassesProvider>
   );
 }

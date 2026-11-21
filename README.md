@@ -10,7 +10,7 @@ Aplikasi React Native untuk praktikum: jadwal kelas, sesi, presensi realtime, iz
 
 ## Membaca kode
 
-- Mulai dari URL atau tab di `src/app`. File rute menunjuk ke layar di `src/features`; gaya layar akademik berada di file `.styles.ts` di sebelahnya.
+- Mulai dari `src/app/_layout.tsx` untuk akses dan layar detail. Tab utama ada di `src/app/(tabs)`. Layar akademik dan file `.styles.ts` ada di `src/features/academic`.
 - Hook jadwal, kelas, dan sesi ada di `src/features/academic/useAcademic.ts`. Listener Firestore ada di `src/features/academic/listeners.ts`. Detail sesi memakai data kelas yang sudah dimuat dan mendengarkan satu sesi.
 - Alur baca dan tulis terpisah. Layar mendengarkan Firestore melalui hook dan mengirim perubahan melalui `src/lib/mutations.ts`. Firestore Security Rules memeriksa peran dan kepemilikan sebelum commit.
 - Fungsi di `src/lib` menangani profil, kelas praktikum, sesi, peserta, presensi, izin, dan ulasan. Sentimen dihitung di perangkat saat ulasan dikirim.

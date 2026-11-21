@@ -33,16 +33,23 @@ function rootScreens(session) {
   const Stack = { Screen: 'screen', Protected: 'protected' };
   const Root = loadTypeScript('src/app/_layout.tsx', {
     'expo-router': { Stack },
+    '@/features/academic/useAcademic': { AssistantClassesProvider: 'classes-provider' },
     '@/hooks/useAuth': { AuthProvider: 'provider', useAuth: () => session },
   }).default;
-  return collectScreens(Root().props.children.type().props.children, Stack.Screen).map(
+  const navigator = Root().props.children.type();
+  assert.equal(navigator.type, 'classes-provider');
+  assert.equal(
+    navigator.props.uid,
+    session.phase === 'active' && session.role === 'asisten' ? session.user.uid : undefined,
+  );
+  return collectScreens(navigator.props.children.props.children, Stack.Screen).map(
     (screen) => screen.props.name,
   );
 }
 
 function tabs(role) {
   const Tabs = { Screen: 'tab', Protected: 'protected' };
-  const Layout = loadTypeScript('src/app/(app)/(tabs)/_layout.tsx', {
+  const Layout = loadTypeScript('src/app/(tabs)/_layout.tsx', {
     'expo-router': { Tabs },
     'expo-symbols': { SymbolView: 'symbol' },
     'react-native': { Text: 'text' },
@@ -53,34 +60,28 @@ function tabs(role) {
   return collectScreens(Layout().props.children, Tabs.Screen);
 }
 
-test('only an active Auth and Firestore profile opens the application group', () => {
+test('the root stack protects tabs and details by account phase and role', () => {
   assert.deepEqual(rootScreens({ user: null, phase: 'signed-out' }), ['index', 'register']);
+  const user = { uid: 'account' };
   for (const phase of ['loading', 'verify', 'onboarding', 'disabled', 'error']) {
-    assert.deepEqual(rootScreens({ user: { uid: 'student' }, phase }), ['index']);
+    assert.deepEqual(rootScreens({ user, phase, role: 'asisten' }), ['index']);
   }
-  assert.deepEqual(rootScreens({ user: { uid: 'student' }, phase: 'active' }), ['index', '(app)']);
-});
-
-test('detail screens open on the authenticated stack with the appropriate role', () => {
-  const Stack = { Screen: 'screen', Protected: 'protected' };
-  const appScreens = (role) => {
-    const Layout = loadTypeScript('src/app/(app)/_layout.tsx', {
-      'expo-router': { Stack },
-      '@/features/academic/useAcademic': { AssistantClassesProvider: 'provider' },
-      '@/hooks/useAuth': { useAuth: () => ({ role }) },
-    }).default;
-    return collectScreens(Layout().props.children.props.children, Stack.Screen).map(
-      (screen) => screen.props.name,
-    );
-  };
-  assert.deepEqual(appScreens('asisten'), ['(tabs)', 'asisten/kelas', 'asisten/sesi']);
-  assert.deepEqual(appScreens('praktikan'), [
+  assert.deepEqual(rootScreens({ user, phase: 'active', role: 'asisten' }), [
+    'index',
+    '(tabs)',
+    'asisten/kelas',
+    'asisten/sesi',
+  ]);
+  assert.deepEqual(rootScreens({ user, phase: 'active', role: 'praktikan' }), [
+    'index',
     '(tabs)',
     'praktikan/presensi',
     'praktikan/ajukan-izin',
     'praktikan/ulasan',
   ]);
-  assert.deepEqual(appScreens(null), ['(tabs)']);
+});
+
+test('tabs expose the correct screens for each role', () => {
   assert.deepEqual(
     tabs('asisten').map((screen) => screen.props.name),
     ['jadwal', 'asisten/praktikum', 'asisten/izin', 'profil'],
@@ -114,22 +115,31 @@ test('Expo Router resolves actual screen files without obsolete demo routes', ()
   const leaf = (url) => routeChain(url).at(-1)?.name;
   assert.equal(leaf('/'), 'index');
   assert.notEqual(leaf('/demo'), 'demo');
-  assert.equal(leaf('/praktikan/presensi?classId=kelas1&sessionId=sesi1'), 'praktikan/presensi');
-  assert.equal(leaf('/asisten/izin'), 'asisten/izin');
+  for (const detail of ['presensi', 'ajukan-izin', 'ulasan']) {
+    const [route] = routeChain(`/praktikan/${detail}?classId=kelas1&sessionId=sesi1`);
+    assert.equal(route.name, 'praktikan/' + detail);
+    assert.deepEqual(route.params, { classId: 'kelas1', sessionId: 'sesi1' });
+  }
+  for (const tab of ['asisten/izin', 'praktikan/riwayat', 'jadwal', 'profil']) {
+    assert.deepEqual(
+      routeChain('/' + tab).map(({ name }) => name),
+      ['(tabs)', tab],
+    );
+  }
   assert.deepEqual(
     routeChain('/asisten/praktikum').map(({ name }) => name),
-    ['(app)', '(tabs)', 'asisten/praktikum'],
+    ['(tabs)', 'asisten/praktikum'],
   );
   const classroom = routeChain('/asisten/kelas?classId=basis-data');
   assert.deepEqual(
     classroom.map(({ name }) => name),
-    ['(app)', 'asisten/kelas'],
+    ['asisten/kelas'],
   );
   assert.deepEqual(classroom.at(-1).params, { classId: 'basis-data' });
   const session = routeChain('/asisten/sesi?classId=basis-data&sessionId=query');
   assert.deepEqual(
     session.map(({ name }) => name),
-    ['(app)', 'asisten/sesi'],
+    ['asisten/sesi'],
   );
   assert.deepEqual(session.at(-1).params, { classId: 'basis-data', sessionId: 'query' });
 
@@ -144,35 +154,24 @@ test('Expo Router resolves actual screen files without obsolete demo routes', ()
     key: 'app-stack',
     routeKeySeq: 0,
     index: 0,
-    routeNames: ['(tabs)', 'asisten/kelas', 'asisten/sesi'],
+    routeNames: ['index', '(tabs)', 'asisten/kelas', 'asisten/sesi'],
     routes: [tabsRoute],
   };
-  const router = StackRouter({ initialRouteName: '(tabs)' });
+  const router = StackRouter({ initialRouteName: 'index' });
   const options = { routeParamList: {}, routeGetIdList: {} };
-  let currentStack = stack;
   const registry = new Map([
     [stack.key, { reduce: (state, action) => router.getStateForAction(state, action, options) }],
-    [
-      'root-stack',
-      { reduce: (state, action) => StackRouter({}).getStateForAction(state, action, options) },
-    ],
   ]);
   const linking = { config: getNavigationConfig(routeNode, true, {}), getStateFromPath };
-  function push(href) {
-    const root = {
-      stale: false,
-      type: 'stack',
-      key: 'root-stack',
-      index: 0,
-      routeNames: ['index', '(app)'],
-      routes: [{ key: 'app', name: '(app)', state: currentStack }],
-    };
-    const navigationState = { index: 0, routes: [{ name: '__root', state: root }] };
+  let currentStack = { ...stack, routes: [{ key: 'login', name: 'index' }] };
+
+  function navigate(href, type = 'PUSH') {
+    const navigationState = { index: 0, routes: [{ name: '__root', state: currentStack }] };
     const { action } = getNavigateAction(
       href,
       {},
       { routeNode, registry, linking, redirects: [] },
-      'PUSH',
+      type,
       false,
       undefined,
       undefined,
@@ -183,22 +182,53 @@ test('Expo Router resolves actual screen files without obsolete demo routes', ()
     return currentStack.routes[currentStack.index];
   }
 
+  const landing = navigate('/jadwal', 'REPLACE');
+  assert.equal(landing.name, '(tabs)');
+  assert.equal(landing.state.routes[landing.state.index].name, 'jadwal');
+  assert.equal(currentStack.routes.length, 1);
+  currentStack = stack;
+
   assert.deepEqual(
-    push('/asisten/sesi?classId=basis-data&sessionId=query').params,
+    navigate('/asisten/sesi?classId=basis-data&sessionId=query').params,
     session.at(-1).params,
   );
   currentStack = router.getStateForAction(currentStack, StackActions.pop(), options).state;
   assert.deepEqual(currentStack.routes[currentStack.index], tabsRoute);
 
-  assert.deepEqual(push('/asisten/kelas?classId=basis-data').params, classroom.at(-1).params);
+  assert.deepEqual(navigate('/asisten/kelas?classId=basis-data').params, classroom.at(-1).params);
   const classOpened = currentStack;
-  const review = push('/asisten/sesi?classId=basis-data&sessionId=query&section=ulasan');
+  const review = navigate('/asisten/sesi?classId=basis-data&sessionId=query&section=ulasan');
   assert.equal(review.name, 'asisten/sesi');
   assert.deepEqual(review.params, { ...session.at(-1).params, section: 'ulasan' });
   const returned = router.getStateForAction(currentStack, StackActions.pop(), options).state;
   assert.deepEqual(returned.routes[returned.index], classOpened.routes[classOpened.index]);
   const list = router.getStateForAction(returned, StackActions.pop(), options).state;
   assert.deepEqual(list.routes[list.index], tabsRoute);
+
+  const studentTabs = {
+    ...tabsRoute,
+    state: { index: 0, routes: [{ name: 'jadwal' }, { name: 'praktikan/riwayat' }] },
+  };
+  const student = { user: { uid: 'student' }, phase: 'active', role: 'praktikan' };
+  currentStack = { ...stack, routeNames: rootScreens(student), routes: [studentTabs] };
+  const attendance = navigate('/praktikan/presensi?classId=basis-data&sessionId=query');
+  assert.equal(attendance.name, 'praktikan/presensi');
+  assert.deepEqual(attendance.params, session.at(-1).params);
+  const schedule = router.getStateForAction(currentStack, StackActions.pop(), options).state;
+  assert.deepEqual(schedule.routes[schedule.index], studentTabs);
+
+  const loggedOut = router.getStateForAction(
+    currentStack,
+    {
+      type: 'ROUTE_NAMES_CHANGED',
+      payload: { routeNames: rootScreens({ user: null, phase: 'signed-out' }) },
+    },
+    options,
+  ).state;
+  assert.deepEqual(
+    loggedOut.routes.map(({ name }) => name),
+    ['index'],
+  );
 
   assert.equal(leaf('/profil'), 'profil');
   assert.notEqual(leaf('/asisten-sesi'), 'asisten-sesi');
@@ -221,7 +251,7 @@ test('session detail opens the selected tab and loads data only for that tab', (
   };
   const data = (value) => ({ value, loading: false, error: null });
   const { default: AssistantSessionRoute } = loadTypeScript(
-    'src/features/academic/screens/assistant-session.tsx',
+    'src/features/academic/assistant-session.tsx',
     {
       'expo-router': {
         router: {
