@@ -17,6 +17,12 @@ service cloud.firestore {
       return hasRole('praktikan') && studentUid == request.auth.uid;
     }
 
+    function ownMissingPair(id) {
+      let parts = id.split('~');
+      return resource == null && hasRole('praktikan') && parts.size() >= 2
+        && parts[parts.size() - 1] == request.auth.uid;
+    }
+
     function activeMember(classId) {
       let enrollmentId = classId + '~' + request.auth.uid;
       let enrollment = /databases/$(database)/documents/enrollments/$(enrollmentId);
@@ -31,48 +37,454 @@ service cloud.firestore {
       );
     }
 
+    function verifiedUser(uid) {
+      return request.auth != null && request.auth.uid == uid
+        && request.auth.token.email_verified == true;
+    }
+
+    function validNim(nim) {
+      return nim is string && nim.matches('^[A-Z0-9][A-Z0-9-]{0,29}$');
+    }
+
+    function validText(value, maxLength) {
+      return value is string && value.size() <= maxLength
+        && value.matches('(?s).*[^[:space:]].*');
+    }
+
+    function ownCreateId(id) {
+      let parts = id.split('~');
+      return parts.size() == 2 && parts[0] == request.auth.uid
+        && parts[1].matches('^[a-zA-Z0-9_-]{1,128}$');
+    }
+
+    function classOwner(classId, activeOnly) {
+      let data = get(/databases/$(database)/documents/classes/$(classId)).data;
+      return ownsAsAssistant(data.assistantUid) && (!activeOnly || data.status == 'active');
+    }
+
+    function classIdFromPair(id) {
+      let parts = id.split('~');
+      return parts.size() == 2 ? parts[0] : parts[0] + '~' + parts[1];
+    }
+
+    function recentStudentLookup(nim) {
+      let lookup = get(/databases/$(database)/documents/studentLookups/$(request.auth.uid)).data;
+      return hasRole('asisten') && lookup.nim == nim
+        && lookup.updatedAt + duration.value(1, 'm') >= request.time
+        && classOwner(lookup.classId, true);
+    }
+
+    // A profile and its NIM reservation must be created together.
+    function validStudentProfile(uid, profile) {
+      let key = /databases/$(database)/documents/studentKeys/$(profile.nim);
+      return profile.keys().hasOnly(['displayName', 'role', 'accountStatus', 'nim', 'createdAt', 'updatedAt'])
+        && validText(profile.displayName, 100)
+        && profile.role == 'praktikan' && profile.accountStatus == 'active'
+        && validNim(profile.nim)
+        && profile.createdAt == request.time && profile.updatedAt == request.time
+        && !exists(key) && getAfter(key).data.studentUid == uid;
+    }
+
+    function validNimChange(uid, previous, next) {
+      let oldKey = /databases/$(database)/documents/studentKeys/$(previous);
+      let newKey = /databases/$(database)/documents/studentKeys/$(next);
+      return validNim(next) && get(oldKey).data.studentUid == uid
+        && !existsAfter(oldKey) && !exists(newKey) && getAfter(newKey).data.studentUid == uid;
+    }
+
     match /users/{uid} {
-      allow get: if request.auth != null && request.auth.uid == uid;
+      allow get: if (request.auth != null && request.auth.uid == uid)
+        || (resource != null && resource.data.role == 'praktikan'
+          && resource.data.accountStatus == 'active' && recentStudentLookup(resource.data.nim)
+          && get(/databases/$(database)/documents/studentKeys/$(resource.data.nim)).data.studentUid == uid);
+      allow create: if verifiedUser(uid) && validStudentProfile(uid, request.resource.data);
+      allow update: if verifiedUser(uid) && resource.data.accountStatus == 'active'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'nim', 'updatedAt'])
+        && validText(request.resource.data.displayName, 100)
+        && request.resource.data.updatedAt == request.time
+        && (request.resource.data.nim == resource.data.nim
+          || (resource.data.role == 'praktikan'
+            && validNimChange(uid, resource.data.nim, request.resource.data.nim)));
+    }
+
+    match /studentKeys/{nim} {
+      function validReservation() {
+        let key = request.resource.data;
+        let profile = /databases/$(database)/documents/users/$(key.studentUid);
+        return key.keys().hasOnly(['studentUid', 'createdAt'])
+          && verifiedUser(key.studentUid) && validNim(nim) && key.createdAt == request.time
+          && getAfter(profile).data.nim == nim && getAfter(profile).data.role == 'praktikan'
+          && getAfter(profile).data.accountStatus == 'active'
+          && (!exists(profile) || get(profile).data.nim != nim);
+      }
+      function validRelease() {
+        let uid = resource.data.studentUid;
+        let path = /databases/$(database)/documents/users/$(uid);
+        let after = getAfter(path).data;
+        return verifiedUser(uid) && get(path).data.nim == nim
+          && after.role == 'praktikan' && after.accountStatus == 'active' && after.nim != nim
+          && validNim(after.nim)
+          && getAfter(/databases/$(database)/documents/studentKeys/$(after.nim)).data.studentUid == uid;
+      }
+      allow create: if validReservation();
+      allow delete: if validRelease();
+      allow get: if recentStudentLookup(nim);
+    }
+
+    match /studentLookups/{uid} {
+      function validLookup(data) {
+        return request.auth.uid == uid
+          && data.keys().hasOnly(['classId', 'nim', 'windowStartedAt', 'count', 'updatedAt'])
+          && classOwner(data.classId, true) && validNim(data.nim)
+          && data.updatedAt == request.time;
+      }
+      allow get: if ownsAsAssistant(uid);
+      allow create: if validLookup(request.resource.data)
+        && request.resource.data.windowStartedAt == request.time && request.resource.data.count == 1;
+      allow update: if validLookup(request.resource.data) && (
+        (request.time < resource.data.windowStartedAt + duration.value(1, 'm')
+          && request.resource.data.windowStartedAt == resource.data.windowStartedAt
+          && request.resource.data.count == resource.data.count + 1
+          && request.resource.data.count <= 20)
+        || (request.time >= resource.data.windowStartedAt + duration.value(1, 'm')
+          && request.resource.data.windowStartedAt == request.time && request.resource.data.count == 1)
+      );
     }
 
     match /practicums/{practicumId} {
-      allow read: if ownsAsAssistant(resource.data.assistantUid);
+      function validNewPracticum(data) {
+        return data.keys().hasOnly(['name', 'assistantUid', 'status', 'createdAt', 'updatedAt',
+          'archivedAt', 'activeClassCount', 'totalClassCount'])
+          && validText(data.name, 100) && data.status == 'active'
+          && data.createdAt == request.time && data.updatedAt == request.time
+          && data.archivedAt == null && data.activeClassCount == 0 && data.totalClassCount == 0;
+      }
+      function validClassCountChange(before, after) {
+        let classPath = /databases/$(database)/documents/classes/$(after.lastClassChangeId);
+        let changed = getAfter(classPath).data;
+        return changed.practicumId == practicumId && changed.assistantUid == request.auth.uid
+          && changed.updatedAt == request.time
+          && ((!exists(classPath) && changed.status == 'active'
+               && after.activeClassCount == before.activeClassCount + 1
+               && after.totalClassCount == before.totalClassCount + 1 && after.totalClassCount <= 100)
+            || (get(classPath).data.status == 'active' && changed.status == 'archived'
+                && after.activeClassCount == before.activeClassCount - 1
+                && after.totalClassCount == before.totalClassCount && after.activeClassCount >= 0));
+      }
+      allow get: if (resource != null && ownsAsAssistant(resource.data.assistantUid))
+        || (resource == null && hasRole('asisten') && ownCreateId(practicumId));
+      allow list: if ownsAsAssistant(resource.data.assistantUid);
+      allow create: if ownsAsAssistant(request.resource.data.assistantUid)
+        && ownCreateId(practicumId) && validNewPracticum(request.resource.data);
+      allow update: if ownsAsAssistant(resource.data.assistantUid)
+        && resource.data.status == 'active' && request.resource.data.updatedAt == request.time
+        && ((request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'updatedAt'])
+            && validText(request.resource.data.name, 100))
+          || (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'archivedAt', 'updatedAt'])
+            && resource.data.activeClassCount == 0 && request.resource.data.status == 'archived'
+            && request.resource.data.archivedAt == request.time)
+          || (request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+                'activeClassCount', 'totalClassCount', 'lastClassChangeId', 'updatedAt'])
+              && validClassCountChange(resource.data, request.resource.data)));
     }
 
     match /classes/{classId} {
-      allow get: if ownsAsAssistant(resource.data.assistantUid)
-        || (hasRole('praktikan') && resource.data.status == 'active' && activeMember(classId));
+      function validClassDetails(data) {
+        return validText(data.name, 100) && validText(data.timeZone, 100);
+      }
+      function activePracticum(practicumId) {
+        let parent = get(/databases/$(database)/documents/practicums/$(practicumId)).data;
+        return parent.status == 'active' && parent.assistantUid == request.auth.uid;
+      }
+      function pairedPracticumCount(practicumId, step) {
+        let path = /databases/$(database)/documents/practicums/$(practicumId);
+        let before = get(path).data;
+        let after = getAfter(path).data;
+        return before.status == 'active' && before.assistantUid == request.auth.uid
+          && after.lastClassChangeId == classId && after.updatedAt == request.time
+          && after.activeClassCount == before.activeClassCount + step;
+      }
+      function validNewClass(data) {
+        let parent = get(/databases/$(database)/documents/practicums/$(data.practicumId)).data;
+        return data.keys().hasOnly(['practicumId', 'practicumName', 'assistantUid', 'name',
+          'timeZone', 'status', 'createdAt', 'updatedAt', 'archivedAt', 'unfinishedSessionCount'])
+          && validClassDetails(data) && data.practicumName == parent.name
+          && data.status == 'active' && data.createdAt == request.time
+          && data.updatedAt == request.time && data.archivedAt == null
+          && data.unfinishedSessionCount == 0 && pairedPracticumCount(data.practicumId, 1);
+      }
+      function validSessionCountChange(before, after) {
+        let path = /databases/$(database)/documents/classes/$(classId)/sessions/$(after.lastSessionChangeId);
+        let changed = getAfter(path).data;
+        return before.status == 'active' && changed.assistantUid == request.auth.uid
+          && changed.updatedAt == request.time && after.unfinishedSessionCount >= 0
+          && ((!exists(path) && changed.status == 'scheduled'
+              && after.unfinishedSessionCount == before.unfinishedSessionCount + 1)
+            || (after.unfinishedSessionCount == before.unfinishedSessionCount - 1
+              && ((get(path).data.status == 'open' && changed.status == 'closed')
+                || (get(path).data.status == 'scheduled' && changed.status == 'cancelled'))));
+      }
+      function validClassUpdate(before, after) {
+        let changed = after.diff(before).affectedKeys();
+        return after.updatedAt == request.time && (
+          (changed.hasOnly(['practicumName', 'updatedAt'])
+            && after.practicumName == getAfter(
+              /databases/$(database)/documents/practicums/$(before.practicumId)
+            ).data.name)
+          || (before.status == 'active' && changed.hasOnly(['name', 'timeZone', 'updatedAt'])
+            && validClassDetails(after) && activePracticum(before.practicumId))
+          || (before.status == 'active' && changed.hasOnly(['status', 'archivedAt', 'updatedAt'])
+            && before.unfinishedSessionCount == 0 && after.status == 'archived'
+            && after.archivedAt == request.time && pairedPracticumCount(before.practicumId, -1))
+          || (changed.hasOnly(['unfinishedSessionCount', 'lastSessionChangeId', 'updatedAt'])
+            && validSessionCountChange(before, after))
+        );
+      }
+      allow get: if (resource != null && (ownsAsAssistant(resource.data.assistantUid)
+        || (hasRole('praktikan') && resource.data.status == 'active' && activeMember(classId))))
+        || (resource == null && hasRole('asisten') && ownCreateId(classId));
       allow list: if ownsAsAssistant(resource.data.assistantUid);
+      allow create: if ownsAsAssistant(request.resource.data.assistantUid)
+        && ownCreateId(classId) && validNewClass(request.resource.data);
+      allow update: if ownsAsAssistant(resource.data.assistantUid)
+        && validClassUpdate(resource.data, request.resource.data);
 
       match /sessions/{sessionId} {
+        function activeOwnedClass() {
+          let parent = get(/databases/$(database)/documents/classes/$(classId)).data;
+          return parent.status == 'active' && ownsAsAssistant(parent.assistantUid);
+        }
+        function pairedSessionCount(step) {
+          let path = /databases/$(database)/documents/classes/$(classId);
+          let before = get(path).data;
+          let after = getAfter(path).data;
+          return after.lastSessionChangeId == sessionId && after.updatedAt == request.time
+            && after.unfinishedSessionCount == before.unfinishedSessionCount + step;
+        }
+        function validSchedule(data) {
+          return validText(data.moduleTitle, 120) && validText(data.room, 120)
+            && data.startsAt is timestamp && data.endsAt is timestamp
+            && data.endsAt > data.startsAt;
+        }
+        function validNewSession(data) {
+          return data.keys().hasOnly(['assistantUid', 'moduleTitle', 'room', 'startsAt', 'endsAt',
+            'status', 'openedAt', 'closedAt', 'cancelledAt', 'pendingPermitCount', 'createdAt', 'updatedAt'])
+            && validSchedule(data) && data.assistantUid == request.auth.uid
+            && data.status == 'scheduled' && data.openedAt == null && data.closedAt == null
+            && data.cancelledAt == null && data.pendingPermitCount == 0
+            && data.createdAt == request.time && data.updatedAt == request.time
+            && pairedSessionCount(1);
+        }
+        function validSessionUpdate(before, after) {
+          let changed = after.diff(before).affectedKeys();
+          return after.updatedAt == request.time && (
+            (before.status == 'scheduled'
+              && changed.hasOnly(['moduleTitle', 'room', 'startsAt', 'endsAt', 'updatedAt'])
+              && validSchedule(after))
+            || (before.status == 'scheduled' && after.status == 'open'
+              && changed.hasOnly(['status', 'openedAt', 'updatedAt'])
+              && after.openedAt == request.time)
+            || (before.status == 'open' && after.status == 'closed'
+              && changed.hasOnly(['status', 'closedAt', 'updatedAt'])
+              && after.closedAt == request.time && pairedSessionCount(-1))
+            || (before.status == 'scheduled' && after.status == 'cancelled'
+              && changed.hasOnly(['status', 'cancelledAt', 'updatedAt'])
+              && before.pendingPermitCount == 0 && after.cancelledAt == request.time
+              && pairedSessionCount(-1))
+          );
+        }
+        function validPermitCountChange(before, after) {
+          let path = /databases/$(database)/documents/permits/$(after.lastPermitChangeId);
+          let nextPermit = getAfter(path).data;
+          return after.diff(before).affectedKeys().hasOnly(['pendingPermitCount', 'lastPermitChangeId', 'updatedAt'])
+            && after.updatedAt == request.time && after.pendingPermitCount >= 0
+            && nextPermit.classId == classId && nextPermit.sessionId == sessionId
+            && nextPermit.assistantUid == before.assistantUid
+            && ((!exists(path) && nextPermit.studentUid == request.auth.uid
+                && nextPermit.status == 'pending' && nextPermit.submittedAt == request.time
+                && after.pendingPermitCount == before.pendingPermitCount + 1)
+              || (ownsAsAssistant(before.assistantUid)
+                && get(path).data.status == 'pending' && nextPermit.status in ['approved', 'rejected']
+                && nextPermit.decidedAt == request.time && nextPermit.decidedBy == request.auth.uid
+                && after.pendingPermitCount == before.pendingPermitCount - 1));
+        }
         allow read: if canReadClassSessions(classId);
+        allow get: if hasRole('praktikan') && hasAttendanceForSession(classId, sessionId);
+        allow create: if activeOwnedClass() && ownCreateId(sessionId)
+          && validNewSession(request.resource.data);
+        allow update: if activeOwnedClass() && resource.data.assistantUid == request.auth.uid
+          && validSessionUpdate(resource.data, request.resource.data);
+        allow update: if request.auth != null
+          && validPermitCountChange(resource.data, request.resource.data);
       }
     }
 
     match /enrollments/{enrollmentId} {
+      function validEnrollment(data) {
+        let student = get(/databases/$(database)/documents/users/$(data.studentUid)).data;
+        let key = get(/databases/$(database)/documents/studentKeys/$(data.nimSnapshot)).data;
+        return data.keys().hasOnly(['classId', 'assistantUid', 'studentUid', 'studentNameSnapshot',
+          'nimSnapshot', 'status', 'joinedAt', 'updatedAt', 'removedAt'])
+          && enrollmentId == data.classId + '~' + data.studentUid
+          && classOwner(data.classId, true) && data.assistantUid == request.auth.uid
+          && student.role == 'praktikan' && student.accountStatus == 'active'
+          && student.nim == data.nimSnapshot && student.displayName == data.studentNameSnapshot
+          && key.studentUid == data.studentUid
+          && data.status == 'active' && data.removedAt == null
+          && data.joinedAt == request.time && data.updatedAt == request.time;
+      }
       allow read: if ownsAsAssistant(resource.data.assistantUid)
         || ownsAsStudent(resource.data.studentUid);
+      allow get: if resource == null && classOwner(classIdFromPair(enrollmentId), true);
+      allow create: if validEnrollment(request.resource.data);
+      allow update: if ownsAsAssistant(resource.data.assistantUid) && (
+        (resource.data.status == 'removed' && validEnrollment(request.resource.data))
+        || (resource.data.status == 'active' && classOwner(resource.data.classId, false)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'removedAt', 'updatedAt'])
+          && request.resource.data.status == 'removed'
+          && request.resource.data.removedAt == request.time
+          && request.resource.data.updatedAt == request.time)
+      );
+    }
+
+    function sessionPath(classId, sessionId) {
+      return /databases/$(database)/documents/classes/$(classId)/sessions/$(sessionId);
+    }
+
+    function validParticipation(id, data, allowedStatuses) {
+      let student = get(/databases/$(database)/documents/users/$(data.studentUid)).data;
+      let parent = get(/databases/$(database)/documents/classes/$(data.classId)).data;
+      let session = get(sessionPath(data.classId, data.sessionId)).data;
+      return id == data.sessionId + '~' + data.studentUid && ownsAsStudent(data.studentUid)
+        && parent.status == 'active' && activeMember(data.classId)
+        && session.status in allowedStatuses && session.assistantUid == parent.assistantUid
+        && data.assistantUid == parent.assistantUid
+        && data.studentNameSnapshot == student.displayName && data.nimSnapshot == student.nim
+        && data.sessionSnapshot == {'practicumName': parent.practicumName, 'className': parent.name,
+          'moduleTitle': session.moduleTitle, 'startsAt': session.startsAt, 'timeZone': parent.timeZone};
     }
 
     match /attendances/{attendanceId} {
+      function noConflictingPermit() {
+        let path = /databases/$(database)/documents/permits/$(attendanceId);
+        return !existsAfter(path) || getAfter(path).data.status == 'rejected';
+      }
       allow read: if ownsAsAssistant(resource.data.assistantUid)
         || ownsAsStudent(resource.data.studentUid);
+      allow get: if ownMissingPair(attendanceId);
+      allow create: if request.resource.data.keys().hasOnly(['classId', 'sessionId', 'assistantUid',
+          'studentUid', 'studentNameSnapshot', 'nimSnapshot', 'sessionSnapshot', 'checkedInAt'])
+        && request.resource.data.checkedInAt == request.time
+        && validParticipation(attendanceId, request.resource.data, ['open'])
+        && noConflictingPermit();
     }
 
     match /permits/{permitId} {
+      function pairedPermitCount(data, step) {
+        let path = sessionPath(data.classId, data.sessionId);
+        let prior = get(path).data;
+        let next = getAfter(path).data;
+        return next.lastPermitChangeId == permitId && next.updatedAt == request.time
+          && next.pendingPermitCount == prior.pendingPermitCount + step;
+      }
+      function validPermit(data) {
+        return data.keys().hasOnly(['classId', 'sessionId', 'assistantUid', 'studentUid',
+            'studentNameSnapshot', 'nimSnapshot', 'sessionSnapshot', 'reason', 'status',
+            'submittedAt', 'decidedBy', 'decidedAt', 'decisionNote'])
+          && validParticipation(permitId, data, ['scheduled', 'open'])
+          && !existsAfter(/databases/$(database)/documents/attendances/$(permitId))
+          && validText(data.reason, 1000) && data.reason.size() >= 10 && data.status == 'pending'
+          && data.submittedAt == request.time && data.decidedBy == null
+          && data.decidedAt == null && data.decisionNote == null && pairedPermitCount(data, 1);
+      }
+      function validDecision(before, after) {
+        return ownsAsAssistant(before.assistantUid) && before.status == 'pending'
+          && classOwner(before.classId, false)
+          && after.diff(before).affectedKeys().hasOnly(['status', 'decidedBy', 'decidedAt', 'decisionNote'])
+          && after.status in ['approved', 'rejected'] && after.decidedBy == request.auth.uid
+          && after.decidedAt == request.time
+          && ((after.status == 'approved' && after.decisionNote == null) || validText(after.decisionNote, 500))
+          && pairedPermitCount(before, -1);
+      }
       allow read: if ownsAsAssistant(resource.data.assistantUid)
         || ownsAsStudent(resource.data.studentUid);
+      allow get: if ownMissingPair(permitId);
+      allow create: if validPermit(request.resource.data);
+      allow update: if validDecision(resource.data, request.resource.data);
+    }
+
+    function currentStudentRecord(collection, sessionId) {
+      let id = sessionId + '~' + request.auth.uid;
+      return /databases/$(database)/documents/$(collection)/$(id);
+    }
+
+    function hasAttendanceForSession(classId, sessionId) {
+      let attendance = get(currentStudentRecord('attendances', sessionId)).data;
+      return attendance.classId == classId && attendance.studentUid == request.auth.uid;
+    }
+
+    function summaryCounts(prior, next, sentiment) {
+      return next.totalSubmitted == prior.totalSubmitted + 1
+        && next.positiveCount == prior.positiveCount + (sentiment == 'positive' ? 1 : 0)
+        && next.neutralCount == prior.neutralCount + (sentiment == 'neutral' ? 1 : 0)
+        && next.negativeCount == prior.negativeCount + (sentiment == 'negative' ? 1 : 0)
+        && next.failedCount == prior.failedCount + (sentiment == null ? 1 : 0);
+    }
+
+    function firstSummary() {
+      return {'totalSubmitted': 0, 'positiveCount': 0, 'neutralCount': 0,
+        'negativeCount': 0, 'failedCount': 0};
     }
 
     match /reviews/{reviewId} {
+      function validReview(data) {
+        let attendance = get(currentStudentRecord('attendances', data.sessionId)).data;
+        let session = get(sessionPath(data.classId, data.sessionId)).data;
+        return data.keys().hasOnly(['classId', 'sessionId', 'assistantUid', 'studentUid', 'text',
+          'submittedAt', 'analysisStatus', 'sentiment', 'modelVersion', 'analyzedAt'])
+          && reviewId == data.sessionId + '~' + request.auth.uid
+          && data.studentUid == request.auth.uid && attendance.studentUid == data.studentUid
+          && attendance.classId == data.classId && attendance.assistantUid == data.assistantUid
+          && session.status == 'closed' && session.assistantUid == data.assistantUid
+          && validText(data.text, 1000) && data.text.size() >= 10
+          && data.submittedAt == request.time && data.analyzedAt == request.time
+          && validText(data.modelVersion, 100)
+          && ((data.analysisStatus == 'succeeded' && data.sentiment in ['positive', 'neutral', 'negative'])
+            || (data.analysisStatus == 'failed' && data.sentiment == null));
+      }
+      function pairedSummary(data) {
+        let path = /databases/$(database)/documents/reviewSummaries/$(data.sessionId);
+        let prior = exists(path) ? get(path).data : firstSummary();
+        let next = getAfter(path).data;
+        return next.updatedAt == request.time && next.classId == data.classId
+          && next.assistantUid == data.assistantUid && summaryCounts(prior, next, data.sentiment);
+      }
       allow read: if ownsAsStudent(resource.data.studentUid);
+      allow get: if ownMissingPair(reviewId);
+      allow create: if hasRole('praktikan') && validReview(request.resource.data)
+        && pairedSummary(request.resource.data);
     }
 
     match /reviewSummaries/{sessionId} {
+      function validSummary(prior, data) {
+        let path = currentStudentRecord('reviews', sessionId);
+        let review = getAfter(path).data;
+        return !exists(path) && review.submittedAt == request.time
+          && data.keys().hasOnly(['classId', 'assistantUid', 'totalSubmitted', 'positiveCount',
+            'neutralCount', 'negativeCount', 'failedCount', 'updatedAt'])
+          && data.classId == review.classId && data.assistantUid == review.assistantUid
+          && data.updatedAt == request.time && summaryCounts(prior, data, review.sentiment);
+      }
       allow read: if ownsAsAssistant(resource.data.assistantUid);
+      allow get: if resource == null && hasRole('asisten');
+      allow create: if hasRole('praktikan') && validSummary(firstSummary(), request.resource.data);
+      allow update: if hasRole('praktikan')
+        && request.resource.data.classId == resource.data.classId
+        && request.resource.data.assistantUid == resource.data.assistantUid
+        && validSummary(resource.data, request.resource.data);
     }
 
-    // All writes, lookups and job documents are reserved for the trusted backend.
+    // Unlisted collections are available only to Firebase administrators.
     match /{document=**} {
       allow read, write: if false;
     }

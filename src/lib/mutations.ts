@@ -1,20 +1,45 @@
-import { getIdToken } from '@react-native-firebase/auth';
-import { httpsCallable } from '@react-native-firebase/functions';
 import { randomUUID } from 'expo-crypto';
+
+import { changeClass } from './classes';
+import { decidePermit, recordParticipation } from './participation';
+import { changePracticum, createPracticum } from './practicums';
+import { getReviewAccess, submitReview } from './reviews';
+import { changeEnrollment, lookupStudent } from './roster';
+import { changeSession } from './sessions';
+
+type Fields = Record<string, unknown>;
+
+const actions = {
+  createPracticum,
+  updatePracticum: (fields: Fields) => changePracticum('updatePracticum', fields),
+  archivePracticum: (fields: Fields) => changePracticum('archivePracticum', fields),
+  createClass: (fields: Fields) => changeClass('createClass', fields),
+  updateClass: (fields: Fields) => changeClass('updateClass', fields),
+  archiveClass: (fields: Fields) => changeClass('archiveClass', fields),
+  createSession: (fields: Fields) => changeSession('createSession', fields),
+  updateSession: (fields: Fields) => changeSession('updateSession', fields),
+  openSession: (fields: Fields) => changeSession('openSession', fields),
+  closeSession: (fields: Fields) => changeSession('closeSession', fields),
+  cancelSession: (fields: Fields) => changeSession('cancelSession', fields),
+  lookupStudent,
+  addStudent: (fields: Fields) => changeEnrollment('addStudent', fields),
+  removeStudent: (fields: Fields) => changeEnrollment('removeStudent', fields),
+  checkIn: (fields: Fields) => recordParticipation('checkIn', fields),
+  submitPermit: (fields: Fields) => recordParticipation('submitPermit', fields),
+  decidePermit,
+  getReviewAccess,
+  submitReview,
+};
 
 export function newRequestId() {
   return randomUUID();
 }
 
 export async function mutate<T = unknown>(
-  action: string,
-  fields: Record<string, unknown> = {},
+  action: keyof typeof actions,
+  fields: Fields,
 ): Promise<T> {
-  const { auth, functions } = await import('./firebase');
-  if (!auth.currentUser) throw new Error('Silakan masuk lagi.');
-  if (action === 'completeProfile') await getIdToken(auth.currentUser, true);
-  const call = httpsCallable<Record<string, unknown>, T>(functions, 'mutate');
-  return (await call({ ...fields, action })).data;
+  return (await actions[action](fields)) as T;
 }
 
 export function mutationError(error: unknown) {

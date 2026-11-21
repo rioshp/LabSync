@@ -314,7 +314,7 @@ export default function AssistantPracticumRoute() {
         `${displayName} (NIM ${matchedNim}) akan ditambahkan ke kelas ${className}.`,
         'Tambah peserta',
         async () => {
-          await mutate('addStudent', { classId, nim: matchedNim, studentUid });
+          await mutate('addStudent', { classId, nim: matchedNim, studentUid, displayName });
           setNimInput('');
         },
         false,

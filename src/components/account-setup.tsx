@@ -5,7 +5,8 @@ import { Text, View } from 'react-native';
 import { AuthButton, AuthError, AuthField, AuthScreen, authStyles } from '@/components/auth-screen';
 import { useAuth } from '@/hooks/useAuth';
 import { getAuthErrorMessage, logout, refreshVerification } from '@/lib/auth';
-import { mutate, mutationError } from '@/lib/mutations';
+import { mutationError } from '@/lib/mutations';
+import { completeProfile } from '@/lib/profile';
 
 export function AccountSetup() {
   const { user, phase, retry } = useAuth();
@@ -100,7 +101,7 @@ export function AccountSetup() {
               disabled={!!busy || !name.trim() || !nim.trim()}
               onPress={() =>
                 run('setup', async () => {
-                  await mutate('completeProfile', { displayName: name.trim(), nim: nim.trim() });
+                  await completeProfile(name, nim);
                   retry();
                 })
               }

@@ -6,6 +6,10 @@ const backendRequire = createRequire(require.resolve('../functions/package.json'
 const { initializeApp: initializeAdmin, deleteApp: deleteAdmin } =
   backendRequire('firebase-admin/app');
 const { getAuth: getAdminAuth } = backendRequire('firebase-admin/auth');
+const { getFirestore: getAdminFirestore, FieldValue } = backendRequire('firebase-admin/firestore');
+const { loadTypeScript } = require('./load-typescript.cjs');
+const firebaseAuth = require('firebase/auth');
+const firestore = require('firebase/firestore');
 const { initializeApp, deleteApp } = require('firebase/app');
 const { connectAuthEmulator, getAuth, signInWithEmailAndPassword } = require('firebase/auth');
 const {
@@ -21,14 +25,12 @@ const {
   setDoc,
   where,
 } = require('firebase/firestore');
-const { connectFunctionsEmulator, getFunctions, httpsCallable } = require('firebase/functions');
 
 const projectId = process.env.GCLOUD_PROJECT || 'demo-labsync';
 const clients = [];
 const runId = randomUUID().slice(0, 8);
 const password = 'Test-labsync-2026!';
 let admin;
-let operator;
 let assistant;
 let otherAssistant;
 let student;
@@ -43,7 +45,7 @@ function endpoint(name, fallback) {
   return [host, Number(port)];
 }
 
-async function client(label, claims) {
+async function client(label) {
   const email = label + '-' + runId + '@example.test';
   const account = await getAdminAuth(admin).createUser({
     email,
@@ -51,7 +53,6 @@ async function client(label, claims) {
     emailVerified: true,
     displayName: label,
   });
-  if (claims) await getAdminAuth(admin).setCustomUserClaims(account.uid, claims);
   const app = initializeApp({ projectId, apiKey: 'demo-only-key', appId: 'demo-' + label }, label);
   clients.push(app);
   const auth = getAuth(app);
@@ -59,15 +60,37 @@ async function client(label, claims) {
   connectAuthEmulator(auth, 'http://' + authHost + ':' + authPort, { disableWarnings: true });
   const db = getFirestore(app);
   connectFirestoreEmulator(db, ...endpoint('FIRESTORE_EMULATOR_HOST', '127.0.0.1:8080'));
-  const functions = getFunctions(app, 'us-central1');
-  connectFunctionsEmulator(functions, ...endpoint('FUNCTIONS_EMULATOR_HOST', '127.0.0.1:5001'));
   await signInWithEmailAndPassword(auth, email, password);
-  const invoke = httpsCallable(functions, 'mutate');
-  return {
-    uid: account.uid,
-    db,
-    mutate: async (action, data = {}) => (await invoke({ ...data, action })).data,
+  const dependencies = {
+    './firebase': { auth, db },
+    '@react-native-firebase/auth': firebaseAuth,
+    '@react-native-firebase/firestore': firestore,
+    'react-native': { Platform: { OS: 'web' } },
+    '../../google-services.json': { client: [] },
+    '../../functions/ai/sentiment': require('../functions/ai/sentiment.js'),
+    '../../functions/ai/model-edom.json': require('../functions/ai/model-edom.json'),
   };
+  dependencies['./auth'] = loadTypeScript('src/lib/auth.ts', dependencies);
+  dependencies['./firestore-input'] = loadTypeScript('src/lib/firestore-input.ts', dependencies);
+  for (const module of [
+    'practicums',
+    'classes',
+    'sessions',
+    'roster',
+    'participation',
+    'reviews',
+  ]) {
+    dependencies['./' + module] = loadTypeScript('src/lib/' + module + '.ts', dependencies);
+  }
+  const { mutate } = loadTypeScript('src/lib/mutations.ts', {
+    ...dependencies,
+    'expo-crypto': { randomUUID },
+  });
+  const { completeProfile, updateAccountProfile } = loadTypeScript(
+    'src/lib/profile.ts',
+    dependencies,
+  );
+  return { uid: account.uid, db, mutate, completeProfile, updateAccountProfile };
 }
 
 function observe(ref, matches, timeout = 12_000) {
@@ -89,10 +112,9 @@ function observe(ref, matches, timeout = 12_000) {
   });
 }
 
-const denied = (error) =>
-  error.code === 'permission-denied' || error.code === 'functions/permission-denied';
+const denied = (error) => error.code === 'permission-denied';
 const conflict = (error) =>
-  error.code === 'functions/failed-precondition' || error.code === 'functions/already-exists';
+  denied(error) || /Selesaikan|Putuskan|Kehadiran|Izin|sesi/i.test(error.message);
 
 before(
   async () => {
@@ -104,18 +126,27 @@ before(
       throw new Error('Run only against demo-labsync Emulator Suite.');
     }
     admin = initializeAdmin({ projectId });
-    [operator, assistant, otherAssistant, student, outsider] = await Promise.all([
-      client('operator', { labsyncOperator: true }),
+    [assistant, otherAssistant, student, outsider] = await Promise.all([
       client('assistant'),
       client('other-assistant'),
       client('student'),
       client('outsider'),
     ]);
     for (const account of [assistant, otherAssistant]) {
-      await operator.mutate('provisionAssistant', { uid: account.uid });
+      const timestamp = FieldValue.serverTimestamp();
+      await getAdminFirestore(admin)
+        .doc('users/' + account.uid)
+        .set({
+          displayName: 'Asisten Uji',
+          role: 'asisten',
+          accountStatus: 'active',
+          nim: null,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        });
     }
-    await student.mutate('completeProfile', { displayName: 'Praktikan A', nim: '260001' });
-    await outsider.mutate('completeProfile', { displayName: 'Praktikan B', nim: '260002' });
+    await student.completeProfile('Praktikan A', '260001');
+    await outsider.completeProfile('Praktikan B', '260002');
   },
   { timeout: 60_000 },
 );
@@ -125,7 +156,7 @@ after(async () => {
   if (admin) await deleteAdmin(admin);
 });
 
-test('Firestore and Functions enforce UID, role and authenticated onboarding', async () => {
+test('Firestore enforces UID, role and authenticated onboarding', async () => {
   const profile = (await getDocFromServer(doc(student.db, 'users', student.uid))).data();
   assert.equal(profile.role, 'praktikan');
   await assert.rejects(getDocFromServer(doc(student.db, 'users', outsider.uid)), denied);
@@ -133,7 +164,23 @@ test('Firestore and Functions enforce UID, role and authenticated onboarding', a
     setDoc(doc(student.db, 'users', student.uid), { role: 'asisten' }, { merge: true }),
     denied,
   );
-  await assert.rejects(student.mutate('provisionAssistant', { uid: student.uid }), denied);
+  assert.equal(
+    (await getDocFromServer(doc(student.db, 'users', student.uid))).data().nim,
+    '260001',
+  );
+  const duplicate = await client('duplicate');
+  await assert.rejects(duplicate.completeProfile('Duplikat', '260001'), /NIM belum dipakai/);
+  assert.equal((await getDocFromServer(doc(duplicate.db, 'users', duplicate.uid))).exists(), false);
+});
+
+test('profile edits move the NIM claim atomically and preserve the last valid profile', async () => {
+  const ref = doc(student.db, 'users', student.uid);
+  await assert.rejects(student.updateAccountProfile('Duplikat', '260002'), /NIM belum dipakai/);
+  assert.equal((await getDocFromServer(ref)).data().nim, '260001');
+  await student.updateAccountProfile('Praktikan A Baru', '260003');
+  assert.equal((await getDocFromServer(ref)).data().nim, '260003');
+  assert.equal((await getDocFromServer(ref)).data().displayName, 'Praktikan A Baru');
+  await student.updateAccountProfile('Praktikan A', '260001');
 });
 
 test('assistant CRUD and enrollment enable only the correct class listener', async () => {
@@ -153,6 +200,7 @@ test('assistant CRUD and enrollment enable only the correct class listener', asy
     classId,
     nim: candidate.nim,
     studentUid: candidate.studentUid,
+    displayName: candidate.displayName,
   });
   const base = {
     classId,
@@ -208,7 +256,11 @@ test('two clients see open, check-in and close; concurrent check-in creates a si
   await assistant.mutate('closeSession', ids);
   await closed;
   await assistant.mutate('removeStudent', { classId, studentUid: student.uid });
-  await assert.rejects(getDocFromServer(studentSession), denied);
+  await assert.rejects(
+    getDocsFromServer(collection(student.db, 'classes', classId, 'sessions')),
+    denied,
+  );
+  assert.equal((await getDocFromServer(studentSession)).data().status, 'closed');
   const history = query(
     collection(student.db, 'attendances'),
     where('studentUid', '==', student.uid),
@@ -230,7 +282,12 @@ test('two clients see open, check-in and close; concurrent check-in creates a si
   const summary = (await getDocFromServer(doc(assistant.db, 'reviewSummaries', sessionId))).data();
   assert.equal(summary.totalSubmitted, 1);
   assert.equal(summary.positiveCount, 1);
-  await assistant.mutate('addStudent', { classId, nim: '260001', studentUid: student.uid });
+  await assistant.mutate('addStudent', {
+    classId,
+    nim: '260001',
+    studentUid: student.uid,
+    displayName: 'Praktikan A',
+  });
 });
 
 test('permits require a human decision, block cancellation while pending, and update student realtime', async () => {
@@ -255,7 +312,12 @@ test('permits require a human decision, block cancellation while pending, and up
 });
 
 test('racing attendance and permit submission cannot record conflicting outcomes', async () => {
-  await assistant.mutate('addStudent', { classId, nim: '260002', studentUid: outsider.uid });
+  await assistant.mutate('addStudent', {
+    classId,
+    nim: '260002',
+    studentUid: outsider.uid,
+    displayName: 'Praktikan B',
+  });
   const ids = { classId, sessionId: permitSessionId };
   const outcome = await Promise.allSettled([
     outsider.mutate('checkIn', ids),
@@ -267,7 +329,7 @@ test('racing attendance and permit submission cannot record conflicting outcomes
     const permitId = permitSessionId + '~' + outsider.uid;
     await assert.rejects(
       assistant.mutate('decidePermit', { permitId, decision: 'rejected' }),
-      (error) => error.code === 'functions/invalid-argument',
+      /Penolakan memerlukan catatan/,
     );
     await assistant.mutate('decidePermit', {
       permitId,
@@ -280,7 +342,7 @@ test('racing attendance and permit submission cannot record conflicting outcomes
   await assistant.mutate('archiveClass', { classId });
   await assistant.mutate('archivePracticum', { practicumId });
   await assert.rejects(
-    getDocFromServer(doc(student.db, 'classes', classId, 'sessions', sessionId)),
+    getDocsFromServer(collection(student.db, 'classes', classId, 'sessions')),
     denied,
   );
   const retained = await getDocFromServer(
