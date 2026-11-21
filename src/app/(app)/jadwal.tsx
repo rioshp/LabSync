@@ -7,23 +7,25 @@ import { BrandColors, SessionStatusColors } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
 import { useSchedule } from '@/hooks/useSchedule';
 import type { Session } from '@/types/session';
+import { formatSessionRange } from '@/features/academic/time';
 
 const statusColors = {
-  upcoming: SessionStatusColors.BELUM_DIBUKA,
-  open: SessionStatusColors.DIBUKA,
-  closed: SessionStatusColors.DITUTUP,
+  scheduled: SessionStatusColors.BELUM_DIBUKA,
+  open: { ...SessionStatusColors.DIBUKA, label: 'Terbuka' },
+  closed: { ...SessionStatusColors.DITUTUP, label: 'Selesai' },
+  cancelled: { bg: '#F1E8E7', text: '#775450', label: 'Dibatalkan' },
 };
 
 export default function ScheduleScreen() {
   const insets = useSafeAreaInsets();
   const { profile, role } = useAuth();
-  const { sessions, loading, error, retry } = useSchedule();
+  const { sessions, loading, error, retry, offline } = useSchedule();
   const isAssistant = role === 'asisten';
 
   function openSession(session: Session) {
     router.push({
       pathname: isAssistant ? '/(app)/asisten/sesi' : '/(app)/praktikan/presensi',
-      params: { sessionId: session.id },
+      params: { classId: session.classId, sessionId: session.id },
     });
   }
 
@@ -53,9 +55,19 @@ export default function ScheduleScreen() {
         <Text accessibilityRole="header" style={styles.title}>Jadwal{'\n'}praktikum.</Text>
         <View style={styles.identityCard}>
           <Text style={styles.eyebrow}>{isAssistant ? 'ASISTEN' : 'PRAKTIKAN'}</Text>
-          <Text style={styles.identityName}>{profile?.name}</Text>
+          <Text style={styles.identityName}>{profile?.displayName ?? profile?.name}</Text>
           {profile?.role === 'praktikan' && <Text style={styles.description}>NIM {profile.nim}</Text>}
+          {isAssistant && (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => router.push('/(app)/asisten/praktikum')}
+              style={({ pressed }) => [styles.manageLink, pressed && styles.pressed]}>
+              <Text style={styles.manageLinkText}>Kelola praktikum, kelas, dan peserta</Text>
+              <Text accessibilityElementsHidden style={styles.manageLinkArrow}>›</Text>
+            </Pressable>
+          )}
         </View>
+        {offline && <Text accessibilityLiveRegion="polite" style={styles.offlineNotice}>Data dari cache dan mungkin belum terbaru. Periksa koneksi internet.</Text>}
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
@@ -81,7 +93,7 @@ export default function ScheduleScreen() {
             </View>
           ) : sessions.map((session) => {
             const status = statusColors[session.status];
-            const timeLabel = `${session.date} · ${session.startTime} - ${session.endTime} WIB`;
+            const timeLabel = formatSessionRange(session.date, session.startTime, session.endDate, session.endTime, session.timeZone);
             return (
               <Pressable
                 key={session.id}
@@ -294,6 +306,16 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 21,
   },
+  offlineNotice: {
+    color: '#765713',
+    fontSize: 12,
+    lineHeight: 18,
+    backgroundColor: '#FFF3DB',
+    borderWidth: 1,
+    borderColor: '#F2D89A',
+    borderRadius: 10,
+    padding: 10,
+  },
   identityCard: {
     padding: 18,
     gap: 6,
@@ -312,6 +334,27 @@ const styles = StyleSheet.create({
     color: BrandColors.forestDeep,
     fontSize: 20,
     fontWeight: '700',
+  },
+  manageLink: {
+    minHeight: 44,
+    marginTop: 6,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    backgroundColor: BrandColors.softGreen,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  manageLinkText: {
+    color: BrandColors.forestDeep,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  manageLinkArrow: {
+    color: BrandColors.forest,
+    fontSize: 26,
+    lineHeight: 28,
   },
   section: {
     gap: 12,

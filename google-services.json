@@ -12,7 +12,12 @@
           "package_name": "com.rio2233steam.mobileappppk"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "151530671148-8u5qfqr3vevf8m7289psvc35g7kc5cl1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDEvYpApQuS8cpYVRqSP1_7YsqX0wNicoA"
@@ -20,7 +25,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "151530671148-8u5qfqr3vevf8m7289psvc35g7kc5cl1.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

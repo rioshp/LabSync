@@ -7,24 +7,17 @@ export default function RootLayout() {
 }
 
 function RootNavigator() {
-  const { user, profile, loading } = useAuth();
-  const signedIn = !loading && !!user && !!profile;
+  const { user, phase } = useAuth();
+  const signedIn = phase === 'active';
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
-      <Stack.Protected guard={!signedIn}>
+      <Stack.Protected guard={!user}>
         <Stack.Screen name="register" />
+        <Stack.Screen name="demo" />
       </Stack.Protected>
       <Stack.Protected guard={signedIn}>
         <Stack.Screen name="(app)" />
-        <Stack.Protected guard={profile?.role === 'asisten'}>
-          <Stack.Screen name="asisten-sesi" />
-          <Stack.Screen name="rekap-asisten" />
-        </Stack.Protected>
-        <Stack.Protected guard={profile?.role === 'praktikan'}>
-          <Stack.Screen name="praktikan-presensi" />
-          <Stack.Screen name="riwayat-praktikan" />
-        </Stack.Protected>
       </Stack.Protected>
     </Stack>
   );

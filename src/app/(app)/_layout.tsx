@@ -26,6 +26,10 @@ export default function AppLayout() {
         tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 23 }}>▦</Text>,
       }} />
       <Tabs.Protected guard={role === 'asisten'}>
+        <Tabs.Screen name="asisten/praktikum" options={{
+          title: 'Praktikum',
+          tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 23 }}>▤</Text>,
+        }} />
         <Tabs.Screen name="asisten/izin" options={{
           title: 'Daftar Izin',
           tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 23 }}>☷</Text>,
@@ -38,8 +42,9 @@ export default function AppLayout() {
           tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 23 }}>↺</Text>,
         }} />
         <Tabs.Screen name="praktikan/presensi" options={{ title: 'Presensi', href: null, tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="praktikan/ajukan-izin" options={{ title: 'Ajukan Izin', href: null, tabBarStyle: { display: 'none' } }} />
+        <Tabs.Screen name="praktikan/ulasan" options={{ title: 'Ulasan', href: null, tabBarStyle: { display: 'none' } }} />
       </Tabs.Protected>
-      <Tabs.Screen name="home" options={{ href: null, headerShown: false }} />
     </Tabs>
   );
 }

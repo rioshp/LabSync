@@ -1,0 +1,486 @@
+import { router } from 'expo-router';
+import { useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { AuthButton } from '@/components/auth-screen';
+import { BrandColors, SessionStatusColors } from '@/constants/theme';
+import { useAuth } from '@/hooks/useAuth';
+import { mutationError, mutate, newRequestId } from '@/lib/mutations';
+import {
+  useAssistantClasses,
+  useAssistantPracticums,
+  useClassRoster,
+  useClassSessions,
+} from '@/features/academic/useAcademic';
+import type { AcademicClass, AcademicSession, Practicum } from '@/features/academic/types';
+import { formatSessionRange, zonedDateTimeToEpochMs } from '@/features/academic/time';
+
+type Draft = {
+  name: string;
+  timeZone: string;
+  moduleTitle: string;
+  room: string;
+  date: string;
+  endDate: string;
+  startTime: string;
+  endTime: string;
+  requestId: string;
+};
+
+type Dialog =
+  | { kind: 'practicum'; item?: Practicum }
+  | { kind: 'class'; practicumId: string; item?: AcademicClass }
+  | { kind: 'session'; classInfo: AcademicClass; item?: AcademicSession }
+  | { kind: 'confirm'; title: string; message: string; label: string; onConfirm: () => Promise<void> };
+
+const EMPTY_DRAFT: Draft = {
+  name: '', timeZone: 'Asia/Jakarta', moduleTitle: '', room: '', date: '', endDate: '', startTime: '', endTime: '', requestId: '',
+};
+
+function errorText(error: unknown) {
+  return mutationError(error);
+}
+
+function compactDate(session: AcademicSession) {
+  return formatSessionRange(session.date, session.startTime, session.endDate, session.endTime, session.timeZone);
+}
+
+function sessionStatus(status: AcademicSession['status']) {
+  if (status === 'scheduled') return { label: 'Belum dibuka', bg: SessionStatusColors.BELUM_DIBUKA.bg, text: SessionStatusColors.BELUM_DIBUKA.text };
+  if (status === 'open') return { label: 'Terbuka', bg: SessionStatusColors.DIBUKA.bg, text: SessionStatusColors.DIBUKA.text };
+  if (status === 'closed') return { label: 'Selesai', bg: SessionStatusColors.DITUTUP.bg, text: SessionStatusColors.DITUTUP.text };
+  return { label: 'Dibatalkan', bg: '#F1E8E7', text: '#775450' };
+}
+
+export default function AssistantPracticumRoute() {
+  const insets = useSafeAreaInsets();
+  const { user, profile, role } = useAuth();
+  const uid = user?.uid;
+  const practicumsState = useAssistantPracticums(uid);
+  const practicums = practicumsState.value;
+  const [selectedPracticumId, setSelectedPracticumId] = useState<string | null>(null);
+  const selectedPracticum = practicums.find((item) => item.id === selectedPracticumId) ?? practicums[0] ?? null;
+  const classesState = useAssistantClasses(uid, selectedPracticum?.id ?? null);
+  const classes = classesState.value;
+  const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
+  const selectedClass = classes.find((item) => item.id === selectedClassId) ?? classes.find((item) => item.status === 'active') ?? classes[0] ?? null;
+  const rosterState = useClassRoster(uid, selectedClass?.id ?? null);
+  const sessionsState = useClassSessions(uid, selectedClass?.id ?? null);
+  const [dialog, setDialog] = useState<Dialog | null>(null);
+  const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
+  const [dialogError, setDialogError] = useState<string | null>(null);
+  const [screenMessage, setScreenMessage] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [nimInput, setNimInput] = useState('');
+  const [rosterError, setRosterError] = useState<string | null>(null);
+  const [addingStudent, setAddingStudent] = useState(false);
+  const formLock = useRef(false);
+  const confirmLock = useRef(false);
+  const rosterLock = useRef(false);
+
+  function openPracticumForm(item?: Practicum) {
+    setDraft({ ...EMPTY_DRAFT, name: item?.name ?? '', requestId: newRequestId() });
+    setDialogError(null);
+    setDialog({ kind: 'practicum', item });
+  }
+
+  function openClassForm(practicumId: string, item?: AcademicClass) {
+    setDraft({ ...EMPTY_DRAFT, name: item?.name ?? '', timeZone: item?.timeZone ?? 'Asia/Jakarta', requestId: newRequestId() });
+    setDialogError(null);
+    setDialog({ kind: 'class', practicumId, item });
+  }
+
+  function openSessionForm(classInfo: AcademicClass, item?: AcademicSession) {
+    setDraft({
+      ...EMPTY_DRAFT,
+      moduleTitle: item?.module ?? '', room: item?.room ?? '', date: item?.date ?? '',
+      endDate: item?.endDate ?? item?.date ?? '',
+      startTime: item?.startTime ?? '', endTime: item?.endTime ?? '', requestId: newRequestId(),
+    });
+    setDialogError(null);
+    setDialog({ kind: 'session', classInfo, item });
+  }
+
+  function askForConfirmation(title: string, message: string, label: string, onConfirm: () => Promise<void>) {
+    setDialogError(null);
+    setDialog({ kind: 'confirm', title, message, label, onConfirm });
+  }
+
+  function requestArchivePracticum(item: Practicum) {
+    if (item.activeClassCount > 0) {
+      setScreenMessage(`Arsip ${item.name} belum tersedia karena masih memiliki ${item.activeClassCount} kelas aktif. Arsipkan kelasnya terlebih dahulu.`);
+      return;
+    }
+    askForConfirmation('Arsipkan praktikum?', `${item.name} akan disembunyikan dari daftar aktif. Riwayat tetap tersimpan.`, 'Arsipkan', async () => {
+      await mutate('archivePracticum', { practicumId: item.id });
+    });
+  }
+
+  function requestArchiveClass(item: AcademicClass) {
+    if (item.unfinishedSessionCount > 0) {
+      setScreenMessage(`Kelas ${item.name} masih memiliki sesi yang belum selesai. Selesaikan atau batalkan sesi tersebut sebelum mengarsipkan kelas.`);
+      return;
+    }
+    askForConfirmation('Arsipkan kelas?', `${item.name} akan dikeluarkan dari daftar kelas aktif. Data dan riwayat tetap tersimpan.`, 'Arsipkan', async () => {
+      await mutate('archiveClass', { classId: item.id });
+    });
+  }
+
+  function requestRemoveStudent(studentUid: string, name: string) {
+    if (!selectedClass) return;
+    askForConfirmation('Keluarkan peserta?', `${name} tidak lagi melihat jadwal kelas ini. Riwayat yang sudah tercatat tetap tersedia.`, 'Keluarkan', async () => {
+      await mutate('removeStudent', { classId: selectedClass.id, studentUid });
+    });
+  }
+
+  function requestCancelSession(item: AcademicSession) {
+    askForConfirmation('Batalkan sesi?', `${item.module} pada ${compactDate(item)} akan ditandai dibatalkan.`, 'Batalkan sesi', async () => {
+      await mutate('cancelSession', { classId: item.classId, sessionId: item.id });
+    });
+  }
+
+  async function submitForm() {
+    if (!dialog || dialog.kind === 'confirm' || formLock.current) return;
+    formLock.current = true;
+    setDialogError(null);
+    setBusy(true);
+    try {
+      if (dialog.kind === 'practicum') {
+        const name = draft.name.trim();
+        if (!name || name.length > 100) throw new Error('Nama praktikum wajib diisi, maksimal 100 karakter.');
+        if (dialog.item) await mutate('updatePracticum', { practicumId: dialog.item.id, name });
+        else await mutate('createPracticum', { name, requestId: draft.requestId });
+      } else if (dialog.kind === 'class') {
+        const name = draft.name.trim();
+        const timeZone = draft.timeZone.trim();
+        if (!name || name.length > 100) throw new Error('Nama kelas wajib diisi, maksimal 100 karakter.');
+        try { new Intl.DateTimeFormat('en', { timeZone }).format(new Date()); } catch { throw new Error('Masukkan zona waktu IANA yang valid, misalnya Asia/Jakarta.'); }
+        if (dialog.item) await mutate('updateClass', { classId: dialog.item.id, name, timeZone });
+        else await mutate('createClass', { practicumId: dialog.practicumId, name, timeZone, requestId: draft.requestId });
+      } else {
+        const moduleTitle = draft.moduleTitle.trim();
+        const room = draft.room.trim();
+        if (!moduleTitle || moduleTitle.length > 120) throw new Error('Topik wajib diisi, maksimal 120 karakter.');
+        if (!room || room.length > 120) throw new Error('Ruang wajib diisi, maksimal 120 karakter.');
+        const startsAt = zonedDateTimeToEpochMs(draft.date, draft.startTime, dialog.classInfo.timeZone);
+        const endsAt = zonedDateTimeToEpochMs(draft.endDate, draft.endTime, dialog.classInfo.timeZone);
+        if (endsAt <= startsAt) throw new Error('Waktu selesai harus setelah waktu mulai.');
+        if (dialog.item) {
+          await mutate('updateSession', { classId: dialog.classInfo.id, sessionId: dialog.item.id, moduleTitle, room, startsAt, endsAt });
+        } else {
+          await mutate('createSession', { classId: dialog.classInfo.id, moduleTitle, room, startsAt, endsAt, requestId: draft.requestId });
+        }
+      }
+      setDialog(null);
+      setScreenMessage(null);
+    } catch (error) {
+      setDialogError(errorText(error));
+    } finally {
+      formLock.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function confirmDialog() {
+    if (!dialog || dialog.kind !== 'confirm' || confirmLock.current) return;
+    confirmLock.current = true;
+    setBusy(true);
+    setDialogError(null);
+    try {
+      await dialog.onConfirm();
+      setDialog(null);
+      setScreenMessage(null);
+    } catch (error) {
+      setDialogError(errorText(error));
+    } finally {
+      confirmLock.current = false;
+      setBusy(false);
+    }
+  }
+
+  async function addStudent() {
+    if (!selectedClass || !nimInput.trim() || rosterLock.current) return;
+    rosterLock.current = true;
+    setAddingStudent(true);
+    setRosterError(null);
+    try {
+      await mutate('addStudent', { classId: selectedClass.id, nim: nimInput.trim() });
+      setNimInput('');
+    } catch (error) {
+      setRosterError(errorText(error));
+    } finally {
+      rosterLock.current = false;
+      setAddingStudent(false);
+    }
+  }
+
+  if (role !== 'asisten') {
+    return <View style={styles.center}><Text style={styles.cardTitle}>Halaman ini khusus asisten.</Text></View>;
+  }
+
+  const isFormDialog = dialog && dialog.kind !== 'confirm';
+
+  return (
+    <View style={styles.screen}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingTop: 16, paddingBottom: insets.bottom + 32 }]} keyboardShouldPersistTaps="handled">
+        <Text accessibilityRole="header" style={styles.title}>Kelola{'\n'}praktikum.</Text>
+        <View style={styles.identityCard}>
+          <Text style={styles.eyebrow}>ASISTEN</Text>
+          <Text style={styles.identityName}>{profile?.displayName ?? profile?.name ?? 'Asisten Praktikum'}</Text>
+          <Text style={styles.description}>Atur praktikum, kelas, peserta, dan jadwal sesi.</Text>
+        </View>
+        {[practicumsState, classesState, rosterState, sessionsState].some((source) => source.offline) && <Text accessibilityLiveRegion="polite" style={styles.offlineNotice}>Data dari cache dan mungkin belum terbaru. Periksa koneksi sebelum menyimpan perubahan.</Text>}
+
+        {screenMessage ? <View style={styles.notice}><Text style={styles.noticeText}>{screenMessage}</Text><Pressable accessibilityRole="button" onPress={() => setScreenMessage(null)}><Text style={styles.dismissText}>Tutup</Text></Pressable></View> : null}
+
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <View><Text accessibilityRole="header" style={styles.sectionTitle}>Praktikum</Text><Text style={styles.description}>Kelola nama praktikum milik Anda.</Text></View>
+            <Pressable accessibilityRole="button" onPress={() => openPracticumForm()} style={styles.primaryButton}><Text style={styles.primaryButtonText}>+ Praktikum</Text></Pressable>
+          </View>
+          {practicumsState.loading ? <Loading label="Memuat praktikum..." /> : practicumsState.error ? <LoadError message={practicumsState.error} retry={practicumsState.retry} /> : practicums.length === 0 ? (
+            <EmptyCard title="Belum ada praktikum" body="Buat praktikum pertama untuk mulai menambahkan kelas dan jadwal." />
+          ) : practicums.map((item) => {
+            const selected = selectedPracticum?.id === item.id;
+            return (
+              <View key={item.id} style={[styles.resourceCard, selected && styles.resourceCardSelected]}>
+                <Pressable accessibilityRole="button" accessibilityState={{ selected }} onPress={() => { setSelectedPracticumId(item.id); setSelectedClassId(null); setScreenMessage(null); }} style={styles.resourceMain}>
+                  <View style={styles.resourceTop}>
+                    <Text style={styles.cardTitle}>{item.name}</Text>
+                    <StatusPill label={item.status === 'active' ? 'Aktif' : 'Diarsipkan'} archived={item.status === 'archived'} />
+                  </View>
+                  <Text style={styles.description}>{item.activeClassCount} kelas aktif · {item.totalClassCount} total kelas</Text>
+                </Pressable>
+                {item.status === 'active' && <View style={styles.resourceActions}>
+                  <SmallButton label="Ubah" onPress={() => openPracticumForm(item)} />
+                  <SmallButton label="Arsipkan" danger onPress={() => requestArchivePracticum(item)} />
+                </View>}
+              </View>
+            );
+          })}
+        </View>
+
+        {selectedPracticum ? <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <View><Text accessibilityRole="header" style={styles.sectionTitle}>Kelas</Text><Text style={styles.description}>{selectedPracticum.name}</Text></View>
+            {selectedPracticum.status === 'active' && <Pressable accessibilityRole="button" onPress={() => openClassForm(selectedPracticum.id)} style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>+ Kelas</Text></Pressable>}
+          </View>
+          {classesState.loading ? <Loading label="Memuat kelas..." /> : classesState.error ? <LoadError message={classesState.error} retry={classesState.retry} /> : classes.length === 0 ? (
+            <EmptyCard title="Belum ada kelas" body="Tambahkan kelas untuk mengelola peserta dan membuat sesi." />
+          ) : classes.map((item) => {
+            const selected = selectedClass?.id === item.id;
+            return (
+              <View key={item.id} style={[styles.resourceCard, selected && styles.resourceCardSelected]}>
+                <Pressable accessibilityRole="button" accessibilityState={{ selected }} onPress={() => { setSelectedClassId(item.id); setRosterError(null); }} style={styles.resourceMain}>
+                  <View style={styles.resourceTop}>
+                    <Text style={styles.cardTitle}>{item.name}</Text>
+                    <StatusPill label={item.status === 'active' ? 'Aktif' : 'Diarsipkan'} archived={item.status === 'archived'} />
+                  </View>
+                  <Text style={styles.description}>{item.timeZone} · {item.unfinishedSessionCount} sesi belum selesai</Text>
+                </Pressable>
+                {item.status === 'active' && <View style={styles.resourceActions}>
+                  <SmallButton label="Ubah" onPress={() => openClassForm(selectedPracticum.id, item)} />
+                  <SmallButton label="Arsipkan" danger onPress={() => requestArchiveClass(item)} />
+                </View>}
+              </View>
+            );
+          })}
+        </View> : null}
+
+        {selectedClass ? <>
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View><Text accessibilityRole="header" style={styles.sectionTitle}>Peserta kelas</Text><Text style={styles.description}>{selectedClass.name} · {rosterState.loading ? 'Memuat roster' : `${rosterState.value.length} peserta aktif`}</Text></View>
+            </View>
+            {selectedClass.status === 'active' && <View style={styles.addStudentRow}>
+              <TextInput
+                accessibilityLabel="NIM peserta yang akan ditambahkan"
+                value={nimInput}
+                onChangeText={setNimInput}
+                placeholder="Masukkan NIM tepat"
+                placeholderTextColor={BrandColors.muted}
+                autoCapitalize="characters"
+                returnKeyType="done"
+                onSubmitEditing={() => void addStudent()}
+                style={[styles.input, styles.nimInput]}
+              />
+              <Pressable accessibilityRole="button" disabled={!nimInput.trim() || addingStudent} onPress={() => void addStudent()} style={[styles.primaryButton, (!nimInput.trim() || addingStudent) && styles.buttonDisabled]}>
+                {addingStudent ? <ActivityIndicator color={BrandColors.paper} /> : <Text style={styles.primaryButtonText}>Tambah</Text>}
+              </Pressable>
+            </View>}
+            {rosterError ? <Text accessibilityRole="alert" style={styles.errorText}>{rosterError}</Text> : null}
+            {rosterState.loading ? <Loading label="Memuat peserta..." /> : rosterState.error ? <LoadError message={rosterState.error} retry={rosterState.retry} /> : rosterState.value.length === 0 ? (
+              <EmptyCard title="Roster masih kosong" body="Tambahkan peserta memakai NIM yang terdaftar pada akun praktikan aktif." />
+            ) : rosterState.value.map((student) => (
+              <View key={student.id} style={styles.rosterRow}>
+                <View style={styles.rosterIdentity}><Text style={styles.cardTitle}>{student.studentNameSnapshot}</Text><Text style={styles.description}>NIM {student.nimSnapshot}</Text></View>
+                {selectedClass.status === 'active' && <SmallButton label="Keluarkan" danger onPress={() => requestRemoveStudent(student.studentUid, student.studentNameSnapshot)} />}
+              </View>
+            ))}
+          </View>
+
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View><Text accessibilityRole="header" style={styles.sectionTitle}>Jadwal sesi</Text><Text style={styles.description}>{selectedClass.name} · {selectedClass.timeZone}</Text></View>
+              {selectedClass.status === 'active' && <Pressable accessibilityRole="button" onPress={() => openSessionForm(selectedClass)} style={styles.secondaryButton}><Text style={styles.secondaryButtonText}>+ Sesi</Text></Pressable>}
+            </View>
+            {sessionsState.loading ? <Loading label="Memuat sesi..." /> : sessionsState.error ? <LoadError message={sessionsState.error} retry={sessionsState.retry} /> : sessionsState.value.length === 0 ? (
+              <EmptyCard title="Belum ada sesi" body="Buat sesi dengan topik, waktu, dan ruang yang jelas." />
+            ) : sessionsState.value.map((session) => {
+              const badge = sessionStatus(session.status);
+              return (
+                <View key={session.id} style={styles.sessionCard}>
+                  <View style={styles.resourceTop}><Text style={styles.cardTitle}>{session.module}</Text><View style={[styles.statusPill, { backgroundColor: badge.bg }]}><Text style={[styles.statusPillText, { color: badge.text }]}>{badge.label}</Text></View></View>
+                  <Text style={styles.description}>{compactDate(session)}</Text>
+                  <Text style={styles.description}>Ruang {session.room}</Text>
+                  <View style={styles.resourceActions}>
+                    <SmallButton label="Rekap & detail" onPress={() => router.push({ pathname: '/(app)/asisten/sesi', params: { classId: session.classId, sessionId: session.id } })} />
+                    {session.status === 'scheduled' && <>
+                      <SmallButton label="Ubah jadwal" onPress={() => openSessionForm(selectedClass, session)} />
+                      <SmallButton label="Batalkan" danger onPress={() => requestCancelSession(session)} />
+                    </>}
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        </> : null}
+      </ScrollView>
+
+      <Modal transparent visible={!!dialog} animationType="fade" onRequestClose={() => { if (!busy) setDialog(null); }}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.modalContent}>
+              {dialog?.kind === 'confirm' ? <>
+                <Text accessibilityRole="header" style={styles.modalTitle}>{dialog.title}</Text>
+                <Text style={styles.description}>{dialog.message}</Text>
+                {dialogError ? <Text accessibilityRole="alert" style={styles.errorText}>{dialogError}</Text> : null}
+                <View style={styles.modalActions}>
+                  <Pressable accessibilityRole="button" disabled={busy} onPress={() => setDialog(null)} style={styles.cancelButton}><Text style={styles.cancelButtonText}>Kembali</Text></Pressable>
+                  <Pressable accessibilityRole="button" disabled={busy} onPress={() => void confirmDialog()} style={[styles.dangerButton, busy && styles.buttonDisabled]}>{busy ? <ActivityIndicator color={BrandColors.paper} /> : <Text style={styles.primaryButtonText}>{dialog.label}</Text>}</Pressable>
+                </View>
+              </> : isFormDialog ? <>
+                <Text accessibilityRole="header" style={styles.modalTitle}>{dialog.kind === 'practicum' ? (dialog.item ? 'Ubah praktikum' : 'Praktikum baru') : dialog.kind === 'class' ? (dialog.item ? 'Ubah kelas' : 'Kelas baru') : (dialog.item ? 'Ubah jadwal sesi' : 'Sesi baru')}</Text>
+                {dialog.kind === 'session' ? <>
+                  <Field label="Topik / modul" value={draft.moduleTitle} onChangeText={(moduleTitle) => setDraft((value) => ({ ...value, moduleTitle }))} placeholder="Contoh: Pengukuran dasar" maxLength={120} />
+                  <Field label="Ruang" value={draft.room} onChangeText={(room) => setDraft((value) => ({ ...value, room }))} placeholder="Contoh: Lab 2" maxLength={120} />
+                  <Field label={`Tanggal mulai (${dialog.classInfo.timeZone})`} value={draft.date} onChangeText={(date) => setDraft((value) => ({ ...value, date }))} placeholder="YYYY-MM-DD" maxLength={10} />
+                  <Field label="Tanggal selesai" value={draft.endDate} onChangeText={(endDate) => setDraft((value) => ({ ...value, endDate }))} placeholder="YYYY-MM-DD" maxLength={10} />
+                  <View style={styles.timeRow}>
+                    <View style={styles.timeField}><Field label="Mulai" value={draft.startTime} onChangeText={(startTime) => setDraft((value) => ({ ...value, startTime }))} placeholder="HH:mm" maxLength={5} /></View>
+                    <View style={styles.timeField}><Field label="Selesai" value={draft.endTime} onChangeText={(endTime) => setDraft((value) => ({ ...value, endTime }))} placeholder="HH:mm" maxLength={5} /></View>
+                  </View>
+                  <Text style={styles.formHint}>Waktu dikirim sesuai zona kelas. Sesi yang sudah dibuka tidak dapat diubah.</Text>
+                </> : <>
+                  <Field label={dialog.kind === 'practicum' ? 'Nama praktikum' : 'Nama kelas'} value={draft.name} onChangeText={(name) => setDraft((value) => ({ ...value, name }))} placeholder={dialog.kind === 'practicum' ? 'Contoh: Fisika Dasar' : 'Contoh: Kelas A'} maxLength={100} />
+                  {dialog.kind === 'class' && <Field label="Zona waktu IANA" value={draft.timeZone} onChangeText={(timeZone) => setDraft((value) => ({ ...value, timeZone }))} placeholder="Asia/Jakarta" autoCapitalize="none" />}
+                </>}
+                {dialogError ? <Text accessibilityRole="alert" style={styles.errorText}>{dialogError}</Text> : null}
+                <View style={styles.modalActions}>
+                  <Pressable accessibilityRole="button" disabled={busy} onPress={() => setDialog(null)} style={styles.cancelButton}><Text style={styles.cancelButtonText}>Batal</Text></Pressable>
+                  <Pressable accessibilityRole="button" disabled={busy} onPress={() => void submitForm()} style={[styles.primaryButton, busy && styles.buttonDisabled]}>{busy ? <ActivityIndicator color={BrandColors.paper} /> : <Text style={styles.primaryButtonText}>Simpan</Text>}</Pressable>
+                </View>
+              </> : null}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+    </View>
+  );
+}
+
+function Field({ label, value, onChangeText, placeholder, maxLength, autoCapitalize }: {
+  label: string; value: string; onChangeText: (value: string) => void; placeholder: string; maxLength?: number; autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
+}) {
+  return <View style={styles.field}><Text style={styles.fieldLabel}>{label}</Text><TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={BrandColors.muted} maxLength={maxLength} autoCapitalize={autoCapitalize} style={styles.input} /></View>;
+}
+
+function Loading({ label }: { label: string }) {
+  return <View style={styles.loading}><ActivityIndicator color={BrandColors.forest} /><Text style={styles.description}>{label}</Text></View>;
+}
+
+function LoadError({ message, retry }: { message: string; retry: () => void }) {
+  return <View style={styles.emptyCard}><Text accessibilityRole="alert" style={styles.cardTitle}>Data belum dapat ditampilkan</Text><Text style={styles.description}>{message}</Text><AuthButton title="Coba lagi" onPress={retry} /></View>;
+}
+
+function EmptyCard({ title, body }: { title: string; body: string }) {
+  return <View style={styles.emptyCard}><Text style={styles.cardTitle}>{title}</Text><Text style={styles.description}>{body}</Text></View>;
+}
+
+function StatusPill({ label, archived }: { label: string; archived: boolean }) {
+  return <View style={[styles.statusPill, archived && styles.archivedPill]}><Text style={[styles.statusPillText, archived && styles.archivedPillText]}>{label}</Text></View>;
+}
+
+function SmallButton({ label, onPress, danger = false }: { label: string; onPress: () => void; danger?: boolean }) {
+  return <Pressable accessibilityRole="button" onPress={onPress} style={({ pressed }) => [styles.smallButton, danger && styles.smallDangerButton, pressed && styles.pressed]}><Text style={[styles.smallButtonText, danger && styles.smallDangerText]}>{label}</Text></Pressable>;
+}
+
+const styles = StyleSheet.create({
+  screen: { flex: 1, backgroundColor: BrandColors.pageBackground },
+  content: { width: '100%', maxWidth: 680, alignSelf: 'center', paddingHorizontal: 20, gap: 22 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: BrandColors.pageBackground },
+  title: { color: BrandColors.forestDeep, fontSize: 36, lineHeight: 42, fontWeight: '800' },
+  identityCard: { padding: 18, gap: 5, borderRadius: 16, borderWidth: 1, borderColor: BrandColors.line, backgroundColor: BrandColors.paper },
+  eyebrow: { color: BrandColors.forestSoft, fontSize: 12, fontWeight: '800', letterSpacing: 1.1 },
+  identityName: { color: BrandColors.forestDeep, fontSize: 20, fontWeight: '700' },
+  description: { color: BrandColors.forestSoft, fontSize: 13, lineHeight: 20 },
+  section: { gap: 10 },
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 },
+  sectionTitle: { color: BrandColors.forestDeep, fontSize: 19, fontWeight: '800' },
+  primaryButton: { minHeight: 42, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, backgroundColor: BrandColors.forest, alignItems: 'center', justifyContent: 'center' },
+  primaryButtonText: { color: BrandColors.paper, fontSize: 14, fontWeight: '800' },
+  secondaryButton: { minHeight: 40, paddingHorizontal: 13, paddingVertical: 9, borderRadius: 10, backgroundColor: BrandColors.softGreen, alignItems: 'center', justifyContent: 'center' },
+  secondaryButtonText: { color: BrandColors.forestDeep, fontSize: 14, fontWeight: '800' },
+  resourceCard: { padding: 14, gap: 10, borderRadius: 14, borderWidth: 1, borderColor: BrandColors.line, backgroundColor: BrandColors.paper },
+  resourceCardSelected: { borderColor: BrandColors.forestSoft, borderWidth: 2 },
+  resourceMain: { gap: 5 },
+  resourceTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 },
+  resourceActions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+  cardTitle: { color: BrandColors.ink, fontSize: 16, lineHeight: 22, fontWeight: '700', flexShrink: 1 },
+  statusPill: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 20, backgroundColor: BrandColors.softGreen },
+  statusPillText: { color: BrandColors.forest, fontSize: 11, fontWeight: '800' },
+  archivedPill: { backgroundColor: '#F1F3F1' },
+  archivedPillText: { color: BrandColors.muted },
+  smallButton: { minHeight: 36, paddingHorizontal: 11, borderRadius: 9, borderWidth: 1, borderColor: BrandColors.line, backgroundColor: BrandColors.paper, alignItems: 'center', justifyContent: 'center' },
+  smallButtonText: { color: BrandColors.forest, fontSize: 12, fontWeight: '800' },
+  smallDangerButton: { borderColor: '#F0D7D4', backgroundColor: '#FFF8F7' },
+  smallDangerText: { color: '#9C3737' },
+  sessionCard: { padding: 14, gap: 8, borderRadius: 14, borderWidth: 1, borderColor: BrandColors.line, backgroundColor: BrandColors.paper },
+  addStudentRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  input: { minHeight: 46, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderColor: BrandColors.line, borderRadius: 10, color: BrandColors.ink, backgroundColor: BrandColors.paper, fontSize: 15 },
+  nimInput: { flex: 1 },
+  rosterRow: { minHeight: 62, padding: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10, borderRadius: 12, backgroundColor: BrandColors.paper, borderWidth: 1, borderColor: BrandColors.line },
+  rosterIdentity: { gap: 3, flex: 1 },
+  emptyCard: { padding: 16, gap: 7, borderRadius: 14, borderWidth: 1, borderColor: BrandColors.line, backgroundColor: BrandColors.paper },
+  loading: { minHeight: 82, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
+  notice: { padding: 13, gap: 8, borderRadius: 12, backgroundColor: '#FFF3DB', borderColor: '#F2D89A', borderWidth: 1 },
+  noticeText: { color: '#765713', fontSize: 13, lineHeight: 19 },
+  offlineNotice: { color: '#765713', fontSize: 12, lineHeight: 18, backgroundColor: '#FFF3DB', borderWidth: 1, borderColor: '#F2D89A', borderRadius: 10, padding: 10 },
+  dismissText: { color: BrandColors.forest, fontWeight: '800' },
+  errorText: { color: '#AB2D2D', fontSize: 13, lineHeight: 19 },
+  modalBackdrop: { flex: 1, padding: 18, justifyContent: 'center', backgroundColor: 'rgba(3,32,28,0.45)' },
+  modalCard: { width: '100%', maxWidth: 480, maxHeight: '90%', alignSelf: 'center', borderRadius: 20, backgroundColor: BrandColors.paper, overflow: 'hidden' },
+  modalContent: { padding: 20, gap: 14 },
+  modalTitle: { color: BrandColors.forestDeep, fontSize: 21, lineHeight: 27, fontWeight: '800' },
+  field: { gap: 6 },
+  fieldLabel: { color: BrandColors.ink, fontSize: 13, fontWeight: '700' },
+  formHint: { color: BrandColors.muted, fontSize: 12, lineHeight: 18 },
+  timeRow: { flexDirection: 'row', gap: 12 },
+  timeField: { flex: 1 },
+  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 2 },
+  cancelButton: { minHeight: 42, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, backgroundColor: '#F2F6F3', alignItems: 'center', justifyContent: 'center' },
+  cancelButtonText: { color: BrandColors.forestDeep, fontSize: 14, fontWeight: '800' },
+  dangerButton: { minHeight: 42, minWidth: 90, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, backgroundColor: '#A83A39', alignItems: 'center', justifyContent: 'center' },
+  buttonDisabled: { opacity: 0.55 },
+  pressed: { opacity: 0.72 },
+});

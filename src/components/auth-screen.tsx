@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -25,7 +25,7 @@ export function AuthScreen({ title, description, children, intro = false }: {
 }) {
   const insets = useSafeAreaInsets();
   const [showIntro, setShowIntro] = useState(intro);
-  const introProgress = useRef(new Animated.Value(intro ? 0 : 1)).current;
+  const [introProgress] = useState(() => new Animated.Value(intro ? 0 : 1));
 
   useEffect(() => {
     if (!intro) return;

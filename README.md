@@ -1,90 +1,44 @@
-# Panduan Onboarding & Pengembangan Tim - Mobile App PPK
+# LabSync
 
-Dokumentasi ini dibagi menjadi **3 bagian utama**: Prerequisite, Install Aplikasi di Web Expo (Khusus Tim), dan Menjalankan Repo di Komputer Lokal.
+Aplikasi React Native untuk praktikum: jadwal kelas, sesi, presensi realtime, izin, dan ulasan. Aplikasi menyediakan **Coba demo lokal** pada layar masuk untuk menjalankan alur Sprint 1 dengan data contoh dan state sementara. Sprint 2 menggunakan Firebase Authentication, Firestore, dan Firebase Functions. Spesifikasi sprint ada di `Project.md` pada folder induk workspace.
 
----
+- `src/app` berisi rute Expo Router. Tampilan utama mengikuti tema LabSync di `src/constants/theme.ts`.
+- `src/features` memisahkan alur akademik, partisipasi, dan demo.
+- `src/lib` dan `src/hooks` menghubungkan aplikasi ke Auth, listener, dan fungsi mutasi.
+- `functions` berisi backend, worker sentimen, skrip operator, dan tes. Lihat [kontrak backend](functions/README.md).
+- `firestore.rules` dan `firestore.indexes.json` mengikuti skema Sprint 2. Aplikasi membaca melalui Firestore dan mengubah data melalui fungsi `mutate`.
 
-## 📌 Bagian 1: Prerequisite (Prasyarat)
+## Jalankan dan verifikasi
 
-Sebelum memulai, pastikan Anda telah menyiapkan hal-hal berikut:
+Gunakan versi Node yang didukung Expo dan runtime Functions. Untuk Emulator Suite, siapkan Firebase CLI dan Java 21 atau lebih baru.
 
-1. **Akun Expo:**
-   - Daftarkan akun di [expo.dev/signup](https://expo.dev/signup).
-   - Pastikan Anda sudah **diundang oleh Owner** ke organisasi **`rio2233s-team`** (cek email undangan atau notifikasi di dashboard Expo Anda).
-2. **Lingkungan Komputer:**
-   - **Node.js** (Versi LTS: v20 atau v22+)
-   - **Git**
-   - **npm** (Bawaan Node.js)
-   - **EAS CLI** (Opsional/Direkomendasikan):
-     ```bash
-     npm install -g eas-cli
-     ```
-3. **Perangkat Uji:**
-   - HP Android fisik (disarankan) atau Android Emulator di laptop.
-
----
-
-## 📲 Bagian 2: Install Aplikasi di Web Expo (Khusus Tim)
-
-> *Hanya akun yang telah diundang sebagai anggota organisasi `rio2233s-team` yang memiliki izin untuk melihat dan mengunduh build ini.*
-
-1. **Buka Web Expo & Login:**  
-   Buka browser di HP Android Anda (atau di laptop) dan login ke [expo.dev/login](https://expo.dev/login) menggunakan akun Expo Anda masing-masing.
-2. **Buka Proyek Tim:**  
-   - Di pojok kiri atas dashboard Expo, pilih organisasi **`rio2233s-team`**.
-   - Klik proyek **`mobile-app-ppk`**.
-3. **Masuk ke Menu Builds & Unduh APK:**  
-   - Di menu sebelah kiri, klik menu **Builds**.
-   - Pilih build Android terbaru dengan status **Development Client** yang bertanda centang hijau (✔ Selesai).
-   - Klik tombol **Download** atau scan QR code dari HP Android Anda untuk memasang (install) file APK di HP.
-
----
-
-## 💻 Bagian 3: Jalankan Repo
-
-Setelah aplikasi terpasang di HP Anda, ikuti langkah berikut untuk mulai menjalankan project di komputer lokal:
-
-### 1. Clone Repo
-```bash
-git clone <URL_REPOSITORY_GIT>
-cd mobile-app-ppk
+```sh
+npm ci
+npm ci --prefix functions
+npm run typecheck
+npm run lint
+npm test
+npm test --prefix functions
+npm run test:emulators
 ```
 
-### 2. Install Dependensi
-```bash
-npm install
-```
+Tes integrasi hanya menerima project ID dengan awalan `demo-`. Ia membuat dua asisten dan dua praktikan pada Auth emulator, menjalankan mutasi sebagai pengguna sebenarnya, dan memeriksa aturan Firestore serta listener dari klien berbeda.
 
-### 3. Jalankan Aplikasi
-Jalankan development server Expo:
-```bash
-npx expo start
-```
+Untuk menjalankan aplikasi, gunakan development build Android, lalu `npx expo start --dev-client`. Aplikasi menggunakan modul native Firebase dan Google sehingga perlu build ulang setelah dependensi native berubah. Untuk menghubungkan build pengembangan ke emulator, salin `.env.example` ke `.env.local`, isi `EXPO_PUBLIC_FIREBASE_EMULATOR_HOST`, dan jalankan Auth, Firestore, dan Functions emulator dengan project ID yang cocok dengan konfigurasi Firebase pada build Android. Android emulator memakai `10.0.2.2`; perangkat fisik memakai IP LAN komputer. Pastikan alamat yang didengar emulator bisa dijangkau perangkat pada jaringan pengujian.
 
-### 4. Hubungkan Aplikasi di HP (Scan QR)
-1. Pastikan **laptop dan HP Android Anda terhubung ke jaringan Wi-Fi yang sama**.
-2. Buka aplikasi **mobile-app-ppk** yang sudah Anda install pada **Bagian 2**.
-3. Gunakan fitur pemindai di dalam aplikasi untuk **scan QR code** yang muncul di terminal laptop.
-4. Project akan terhubung dan siap untuk dikembangkan!
+## Login dengan Google pada Android
 
----
+1. Aktifkan provider Email/Password dan Google di Firebase Authentication untuk proyek pengujian.
+2. Daftarkan SHA-1 build Android pada aplikasi Firebase yang cocok dengan package. Sertifikat development, APK yang didistribusikan, dan Play App Signing dapat berbeda.
+3. Ambil ulang `google-services.json` dari proyek yang sama; aplikasi menggunakan OAuth **Web client ID** dari konfigurasi tersebut. Gunakan `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID` hanya bila integrasi build memerlukan override. Nilai ini adalah ID, bukan client secret.
+4. Buat development atau preview build baru. Pada build itu, uji akun Google baru, masuk ulang dengan akun yang sama, pembatalan, dan linking setelah konflik penyedia.
+5. Jika menargetkan iOS, daftarkan aplikasi iOS di Firebase dan siapkan bundle ID, `GoogleService-Info.plist`, dan URL scheme OAuth iOS sebelum membuat build iOS.
 
-## ☁️ Catatan Tambahan: Menjalankan EAS Build Mandiri (Untuk Tim)
+APK yang memakai Firebase production baru boleh dipakai setelah backend, aturan dan indeks skema Sprint 2 tersedia pada proyek yang dipakai APK. Deployment Functions generasi kedua memerlukan proyek dengan billing yang mendukung layanan tersebut. Uji deployment dan data pada proyek staging sebelum memilih jadwal perubahan untuk proyek aktif. Rules ini memblokir penulisan langsung dari klien lama dan koleksi sesi baru berada di bawah kelas; data dengan skema lama tidak otomatis dipindahkan. Tentukan migrasi/backup dan verifikasi akun asisten lewat jalur operator sebelum rollout ke proyek yang sudah punya data.
 
-Jika tim Anda menambahkan *native library* baru atau ingin membuat build mandiri, anggota tim dapat menjalankan build sendiri melalui terminal:
+## Demo penerimaan
 
-1. **Login EAS di terminal laptop:**
-   ```bash
-   eas login
-   ```
-2. **Jalankan Build:**
-   * **Development Client baru:**  
-     `eas build --platform android --profile development`
-   * **APK Preview Standalone (bisa jalan tanpa server laptop):**  
-     `eas build --platform android --profile preview`
-
----
-
-## 🛠️ Aturan Pengembangan Tim
-- **Tambah library:** Wajib gunakan `npx expo install <nama-paket>` (agar versinya kompatibel dengan Expo SDK 58).
-- **Sebelum Pull Request:** Selalu jalankan `npm run lint` dan `npx tsc --noEmit`.
+1. Dengan build Android, buat pengguna praktikan melalui registrasi email, verifikasi email dan lengkapi profil; ulangi dengan Google. Uji logout, reset, loading, pembatalan, dan masuk ulang.
+2. Dengan akun asisten yang diprovisikan operator, buat praktikum, kelas, peserta dan dua atau lebih sesi. Gunakan dua perangkat untuk menguji jadwal sesuai kelas, buka sesi, presensi tunggal, rekap realtime, dan penutupan.
+3. Pada sesi lain ajukan izin, ambil keputusan sebagai asisten, dan lihat status pada perangkat praktikan. Uji persetujuan dan penolakan. Setelah sesi pertama selesai, kirim ulasan dan periksa hasil/ringkasan sentimen.
+4. Ulangi agar minimal lima perubahan untuk setiap jenis realtime tercatat. Ukur waktu dari keberhasilan aksi sampai status di perangkat kedua; target demo adalah paling lama 3 detik pada koneksi stabil. Uji jaringan putus, restart, pembesaran teks, dan pembaca layar.
