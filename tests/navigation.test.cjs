@@ -32,6 +32,7 @@ function tabs(role) {
   const Tabs = { Screen: 'tab', Protected: 'protected' };
   const Layout = loadTypeScript('src/app/(app)/_layout.tsx', {
     'expo-router': { Tabs },
+    'expo-symbols': { SymbolView: 'symbol' },
     'react-native': { Text: 'text' },
     '@/hooks/useAuth': { useAuth: () => ({ role }) },
     '@/components/logout-button': { LogoutButton: 'logout-button' },
@@ -55,8 +56,8 @@ test('student-only routes cannot enter assistant tabs and are hidden from tab ba
     screens
       .filter((screen) => screen.props.options.href !== null)
       .map((screen) => screen.props.name);
-  assert.deepEqual(visible(assistant), ['jadwal', 'asisten/praktikum', 'asisten/izin']);
-  assert.deepEqual(visible(student), ['jadwal', 'praktikan/riwayat']);
+  assert.deepEqual(visible(assistant), ['jadwal', 'asisten/praktikum', 'asisten/izin', 'profil']);
+  assert.deepEqual(visible(student), ['jadwal', 'praktikan/riwayat', 'profil']);
   assert.ok(!assistant.some((item) => item.props.name.startsWith('praktikan/')));
   assert.ok(!student.some((item) => item.props.name.startsWith('asisten/')));
   assert.ok(student.some((item) => item.props.name === 'praktikan/ulasan'));
@@ -83,5 +84,6 @@ test('Expo Router resolves actual screen files without obsolete demo routes', ()
   assert.notEqual(leaf('/demo'), 'demo');
   assert.equal(leaf('/praktikan/presensi?classId=kelas1&sessionId=sesi1'), 'praktikan/presensi');
   assert.equal(leaf('/asisten/izin'), 'asisten/izin');
+  assert.equal(leaf('/profil'), 'profil');
   assert.notEqual(leaf('/asisten-sesi'), 'asisten-sesi');
 });

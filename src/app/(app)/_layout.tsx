@@ -1,11 +1,10 @@
 import { Tabs } from 'expo-router';
+import { SymbolView } from 'expo-symbols';
 import { Text } from 'react-native';
 
 import { LogoutButton } from '@/components/logout-button';
 import { BrandColors } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
-
-export const unstable_settings = { anchor: 'jadwal' };
 
 export default function AppLayout() {
   const { role } = useAuth();
@@ -94,6 +93,19 @@ export default function AppLayout() {
           }}
         />
       </Tabs.Protected>
+      <Tabs.Screen
+        name="profil"
+        options={{
+          title: 'Profil',
+          tabBarIcon: ({ color, size }) => (
+            <SymbolView
+              name={{ ios: 'person.circle', android: 'account_circle', web: 'account_circle' }}
+              tintColor={color}
+              size={size}
+            />
+          ),
+        }}
+      />
     </Tabs>
   );
 }

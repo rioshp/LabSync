@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "151530671148-fen042lbatmof1gbv4eipdd8su94h7bg.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.rio2233steam.mobileappppk",
+            "certificate_hash": "3c247a8602d2389906709f3a4a52b7f1a70b264a"
+          }
+        },
+        {
           "client_id": "151530671148-8u5qfqr3vevf8m7289psvc35g7kc5cl1.apps.googleusercontent.com",
           "client_type": 3
         }

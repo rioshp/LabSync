@@ -26,6 +26,11 @@ function validEmail(email: string) {
   return value;
 }
 
+function validateNewPassword(password: string, confirmation: string) {
+  if (password.length < 6 || !password.trim()) throw new Error('Password minimal 6 karakter.');
+  if (password !== confirmation) throw new Error('Konfirmasi password tidak cocok.');
+}
+
 export async function login(email: string, password: string, googleCredential?: AuthCredential) {
   const normalizedEmail = validEmail(email);
   if (!password.trim()) throw new Error('Password wajib diisi.');
@@ -43,11 +48,55 @@ export async function login(email: string, password: string, googleCredential?: 
 
 export async function register(email: string, password: string, confirmation: string) {
   const normalizedEmail = validEmail(email);
-  if (password.length < 6 || !password.trim()) throw new Error('Password minimal 6 karakter.');
-  if (password !== confirmation) throw new Error('Konfirmasi password tidak cocok.');
+  validateNewPassword(password, confirmation);
   const { auth } = await import('./firebase');
   const { user } = await createUserWithEmailAndPassword(auth, normalizedEmail, password);
   await sendEmailVerification(user);
+}
+
+export async function addAccountPassword(password: string, confirmation: string) {
+  validateNewPassword(password, confirmation);
+  const { auth } = await import('./firebase');
+  const user = auth.currentUser;
+  if (
+    !user?.email ||
+    !user.emailVerified ||
+    !user.providerData.some(({ providerId }) => providerId === 'google.com')
+  ) {
+    throw new Error('Masuk dengan akun Google yang terverifikasi untuk menambahkan password.');
+  }
+  if (user.providerData.some(({ providerId }) => providerId === 'password')) return;
+  const apiKey = auth.app.options.apiKey;
+  if (!apiKey) throw new Error('Konfigurasi Firebase tidak tersedia.');
+
+  // Supplying the current ID token links the password to this UID, including
+  // projects with Firebase email enumeration protection enabled.
+  const idToken = await getIdToken(user);
+  const response = await fetch(
+    'https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=' + encodeURIComponent(apiKey),
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken, email: user.email, password, returnSecureToken: true }),
+    },
+  );
+  const result = await response.json();
+  if (!response.ok) {
+    const code: string = result.error?.message ?? '';
+    if (
+      code === 'CREDENTIAL_TOO_OLD_LOGIN_AGAIN' ||
+      code === 'INVALID_ID_TOKEN' ||
+      code === 'TOKEN_EXPIRED'
+    ) {
+      throw new Error('Masuk ulang dengan Google, lalu coba tambahkan password lagi.');
+    }
+    if (code.startsWith('WEAK_PASSWORD') || code.startsWith('PASSWORD_DOES_NOT_MEET')) {
+      throw new Error('Gunakan password yang memenuhi persyaratan keamanan.');
+    }
+    throw new Error('Password belum bisa ditambahkan. Coba lagi.');
+  }
+  if (result.localId !== user.uid) throw new Error('Akun berubah. Silakan masuk lagi.');
+  await reload(user);
 }
 
 export async function resetPassword(email: string) {
@@ -132,6 +181,12 @@ export function authCode(error: unknown) {
 
 export function getAuthErrorMessage(error: unknown): string {
   switch (authCode(error)) {
+    case '10':
+    case 'DEVELOPER_ERROR':
+      return 'Konfigurasi Google Sign-In belum cocok dengan aplikasi Android ini. Hubungi pengelola.';
+    case 'PLAY_SERVICES_NOT_AVAILABLE':
+    case '9':
+      return 'Google Play Services tidak tersedia. Periksa pembaruannya, lalu coba lagi.';
     case 'email-already-in-use':
       return 'Email sudah terdaftar. Silakan masuk.';
     case 'invalid-email':

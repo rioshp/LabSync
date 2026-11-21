@@ -119,6 +119,36 @@ test('old profile formats and invalid roles cannot unlock academic features', ()
   );
 });
 
+test('adding a password sends the Google account email and ID token to Firebase', async (context) => {
+  const { api, user, calls, authInstance } = setup({
+    getIdToken: async () => 'test-session-token',
+  });
+  user.emailVerified = true;
+  user.email = 'google@example.com';
+  user.providerData = [{ providerId: 'google.com' }];
+  authInstance.app = { options: { apiKey: 'test-public-key' } };
+  const request = context.mock.method(globalThis, 'fetch', async () => ({
+    ok: true,
+    json: async () => ({ localId: user.uid }),
+  }));
+
+  await api.addAccountPassword('new-password', 'new-password');
+
+  assert.equal(request.mock.callCount(), 1);
+  const [url, options] = request.mock.calls[0].arguments;
+  assert.equal(
+    url,
+    'https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=test-public-key',
+  );
+  assert.deepEqual(JSON.parse(options.body), {
+    idToken: 'test-session-token',
+    email: 'google@example.com',
+    password: 'new-password',
+    returnSecureToken: true,
+  });
+  assert.deepEqual(calls, [['reload']]);
+});
+
 test('password reset does not expose whether an address has a Firebase user', async () => {
   const { api } = setup({
     sendPasswordResetEmail: async () => {
