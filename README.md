@@ -1,9 +1,9 @@
 # LabSync
 
-Aplikasi React Native untuk praktikum: jadwal kelas, sesi, presensi realtime, izin, dan ulasan. Aplikasi menyediakan **Coba demo lokal** pada layar masuk untuk menjalankan alur Sprint 1 dengan data contoh dan state sementara. Sprint 2 menggunakan Firebase Authentication, Firestore, dan Firebase Functions. Spesifikasi sprint ada di `Project.md` pada folder induk workspace.
+Aplikasi React Native untuk praktikum: jadwal kelas, sesi, presensi realtime, izin, dan ulasan. Sprint 2 menggunakan Firebase Authentication, Firestore, dan Firebase Functions. Spesifikasi sprint ada di `Project.md` pada folder induk workspace.
 
 - `src/app` berisi rute Expo Router. Tampilan utama mengikuti tema LabSync di `src/constants/theme.ts`.
-- `src/features` memisahkan alur akademik, partisipasi, dan demo.
+- `src/features` memisahkan alur akademik dan partisipasi.
 - `src/lib` dan `src/hooks` menghubungkan aplikasi ke Auth, listener, dan fungsi mutasi.
 - `functions` berisi backend, worker sentimen, skrip operator, dan tes. Lihat [kontrak backend](functions/README.md).
 - `firestore.rules` dan `firestore.indexes.json` mengikuti skema Sprint 2. Aplikasi membaca melalui Firestore dan mengubah data melalui fungsi `mutate`.
@@ -38,6 +38,14 @@ npm run test:emulators
 Tes integrasi hanya menerima project ID dengan awalan `demo-`. Ia membuat dua asisten dan dua praktikan pada Auth emulator, menjalankan mutasi sebagai pengguna sebenarnya, dan memeriksa aturan Firestore serta listener dari klien berbeda.
 
 Untuk menjalankan aplikasi, gunakan development build Android, lalu `npx expo start --dev-client`. Aplikasi menggunakan modul native Firebase dan Google sehingga perlu build ulang setelah dependensi native berubah. Untuk menghubungkan build pengembangan ke emulator, salin `.env.example` ke `.env.local`, isi `EXPO_PUBLIC_FIREBASE_EMULATOR_HOST`, dan jalankan Auth, Firestore, dan Functions emulator dengan project ID yang cocok dengan konfigurasi Firebase pada build Android. Android emulator memakai `10.0.2.2`; perangkat fisik memakai IP LAN komputer. Pastikan alamat yang didengar emulator bisa dijangkau perangkat pada jaringan pengujian.
+
+## Akun demo untuk pengujian
+
+Tombol **Demo** di kanan layar masuk development build mengisi email dan password saja. Tekan **Masuk** untuk login ke proyek Firebase yang dipakai aplikasi. Peran tetap ditentukan oleh profil Firebase.
+
+1. Siapkan dua akun uji di Firebase Authentication dengan email terverifikasi dan profil aktif. Beri peran praktikan pada satu akun dan asisten pada akun lainnya melalui operator. Gunakan kelas dan data uji yang terpisah dari kelas nyata.
+2. Isi empat variabel `EXPO_PUBLIC_DEMO_*` dari `.env.example` di `.env.local`. Kosongkan `EXPO_PUBLIC_FIREBASE_EMULATOR_HOST` untuk login ke Firebase aktif, lalu mulai ulang Metro.
+3. Simpan kredensial akun uji hanya untuk development. Nilai `EXPO_PUBLIC_*` dapat dibaca dari bundle development, jadi gunakan akun dummy dan jangan masukkan preset ke konfigurasi rilis atau akun pribadi.
 
 ## Login dengan Google pada Android
 

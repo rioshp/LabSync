@@ -1,3 +1,5 @@
+import { Image } from 'expo-image';
+import { SymbolView } from 'expo-symbols';
 import { useEffect, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
@@ -20,11 +22,13 @@ import { BrandColors } from '@/constants/theme';
 export function AuthScreen({
   title,
   description,
+  headerAction,
   children,
   intro = false,
 }: {
   title: string;
-  description: string;
+  description?: string;
+  headerAction?: ReactNode;
   children: ReactNode;
   intro?: boolean;
 }) {
@@ -86,10 +90,13 @@ export function AuthScreen({
           ]}
         >
           <View style={styles.hero}>
-            <Text accessibilityRole="header" style={styles.title}>
-              {title}
-            </Text>
-            <Text style={styles.description}>{description}</Text>
+            <View style={styles.heroRow}>
+              <Text accessibilityRole="header" style={[styles.title, styles.heroTitle]}>
+                {title}
+              </Text>
+              {headerAction}
+            </View>
+            {description && <Text style={styles.description}>{description}</Text>}
           </View>
           {children}
         </ScrollView>
@@ -137,16 +144,48 @@ export function AuthScreen({
   );
 }
 
-export function AuthField({ label, ...props }: TextInputProps & { label: string }) {
+export function AuthField({
+  label,
+  passwordToggle = false,
+  secureTextEntry,
+  style,
+  ...props
+}: TextInputProps & { label: string; passwordToggle?: boolean }) {
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const visibilityLabel = passwordVisible ? 'Sembunyikan password' : 'Tampilkan password';
+
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
-      <TextInput
-        accessibilityLabel={label}
-        placeholderTextColor={BrandColors.muted}
-        {...props}
-        style={styles.input}
-      />
+      <View style={styles.inputWrap}>
+        <TextInput
+          accessibilityLabel={label}
+          placeholderTextColor={BrandColors.muted}
+          {...props}
+          secureTextEntry={passwordToggle ? !passwordVisible : secureTextEntry}
+          style={[styles.input, passwordToggle && styles.inputWithToggle, style]}
+        />
+        {passwordToggle && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={visibilityLabel}
+            accessibilityState={{ disabled: props.editable === false }}
+            disabled={props.editable === false}
+            onPress={() => setPasswordVisible((visible) => !visible)}
+            style={styles.passwordToggle}
+          >
+            <SymbolView
+              name={{
+                ios: passwordVisible ? 'eye.slash' : 'eye',
+                android: passwordVisible ? 'visibility_off' : 'visibility',
+                web: passwordVisible ? 'visibility_off' : 'visibility',
+              }}
+              tintColor={BrandColors.forest}
+              size={22}
+            />
+          </Pressable>
+        )}
+      </View>
     </View>
   );
 }
@@ -156,12 +195,15 @@ export function AuthButton({
   onPress,
   busy = false,
   disabled = false,
+  variant = 'primary',
 }: {
   title: string;
   onPress: () => void;
   busy?: boolean;
   disabled?: boolean;
+  variant?: 'primary' | 'google';
 }) {
+  const isGoogle = variant === 'google';
   return (
     <Pressable
       accessibilityRole="button"
@@ -171,14 +213,24 @@ export function AuthButton({
       onPress={onPress}
       style={({ pressed }) => [
         styles.submit,
-        (busy || disabled) && styles.disabledSubmit,
+        isGoogle && styles.googleButton,
+        (busy || disabled) && (isGoogle ? styles.disabledGoogleButton : styles.disabledSubmit),
         pressed && styles.pressed,
       ]}
     >
       {busy ? (
-        <ActivityIndicator color={BrandColors.paper} />
+        <ActivityIndicator color={isGoogle ? '#1F1F1F' : BrandColors.paper} />
       ) : (
-        <Text style={styles.submitText}>{title}</Text>
+        <>
+          {isGoogle && (
+            <Image
+              source={require('../../assets/images/google-logo.svg')}
+              accessible={false}
+              style={styles.googleLogo}
+            />
+          )}
+          <Text style={[styles.submitText, isGoogle && styles.googleButtonText]}>{title}</Text>
+        </>
       )}
     </Pressable>
   );
@@ -333,6 +385,14 @@ const styles = StyleSheet.create({
     gap: 16,
     paddingBottom: 8,
   },
+  heroRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+  },
+  heroTitle: {
+    flex: 1,
+  },
   title: {
     color: BrandColors.forestDeep,
     fontSize: 38,
@@ -351,6 +411,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: BrandColors.forest,
+  },
+  googleButton: {
+    flexDirection: 'row',
+    gap: 12,
+    backgroundColor: BrandColors.paper,
+    borderWidth: 1,
+    borderColor: '#747775',
+  },
+  disabledGoogleButton: {
+    opacity: 0.6,
+  },
+  googleLogo: {
+    width: 18,
+    height: 18,
+  },
+  googleButtonText: {
+    color: '#1F1F1F',
   },
   disabledSubmit: {
     backgroundColor: BrandColors.muted,
@@ -373,6 +450,20 @@ const styles = StyleSheet.create({
     color: BrandColors.forestDeep,
     fontSize: 16,
     fontWeight: '700',
+  },
+  inputWrap: {
+    justifyContent: 'center',
+  },
+  inputWithToggle: {
+    paddingEnd: 54,
+  },
+  passwordToggle: {
+    position: 'absolute',
+    end: 4,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   input: {
     minHeight: 56,

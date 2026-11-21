@@ -41,7 +41,7 @@ function tabs(role) {
 }
 
 test('only an active Auth and Firestore profile opens the application group', () => {
-  assert.deepEqual(rootScreens({ user: null, phase: 'signed-out' }), ['index', 'register', 'demo']);
+  assert.deepEqual(rootScreens({ user: null, phase: 'signed-out' }), ['index', 'register']);
   for (const phase of ['loading', 'verify', 'onboarding', 'disabled', 'error']) {
     assert.deepEqual(rootScreens({ user: { uid: 'student' }, phase }), ['index']);
   }
@@ -80,7 +80,7 @@ test('Expo Router resolves actual screen files without obsolete demo routes', ()
     return state?.routes.at(-1)?.name;
   }
   assert.equal(leaf('/'), 'index');
-  assert.equal(leaf('/demo'), 'demo');
+  assert.notEqual(leaf('/demo'), 'demo');
   assert.equal(leaf('/praktikan/presensi?classId=kelas1&sessionId=sesi1'), 'praktikan/presensi');
   assert.equal(leaf('/asisten/izin'), 'asisten/izin');
   assert.notEqual(leaf('/asisten-sesi'), 'asisten-sesi');

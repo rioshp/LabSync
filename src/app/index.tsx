@@ -1,11 +1,13 @@
 import type { AuthCredential } from '@react-native-firebase/auth';
 import { Link, Redirect } from 'expo-router';
 import { useRef, useState } from 'react';
-import { Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AccountSetup } from '@/components/account-setup';
 import { AuthButton, AuthError, AuthField, AuthScreen, authStyles } from '@/components/auth-screen';
 import { AuthSessionStatus } from '@/components/auth-session-status';
+import { DemoAccountPicker } from '@/components/demo-account-picker';
+import { BrandColors } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
 import {
   authCode,
@@ -80,10 +82,20 @@ export default function LoginScreen() {
       key={mode}
       intro={!resetting}
       title={resetting ? 'Atur ulang password.' : 'Halo,\nselamat datang.'}
-      description={
-        resetting
-          ? 'Masukkan email akun praktikum kamu.'
-          : 'Masuk untuk mengakses kegiatan praktikum kamu.'
+      description={resetting ? 'Masukkan email akun praktikum kamu.' : undefined}
+      headerAction={
+        !resetting && (
+          <DemoAccountPicker
+            disabled={!!busy}
+            onSelect={(account) => {
+              pendingGoogle.current = null;
+              setEmail(account.email);
+              setPassword(account.password);
+              setError(null);
+              setNotice('');
+            }}
+          />
+        )
       }
     >
       <View style={authStyles.form}>
@@ -98,18 +110,32 @@ export default function LoginScreen() {
           editable={!busy}
         />
         {!resetting && (
-          <AuthField
-            label="Password"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoComplete="current-password"
-            editable={!busy}
-            returnKeyType="go"
-            onSubmitEditing={() => submit('email')}
-          />
+          <View>
+            <AuthField
+              label="Password"
+              value={password}
+              onChangeText={setPassword}
+              passwordToggle
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="current-password"
+              editable={!busy}
+              returnKeyType="go"
+              onSubmitEditing={() => submit('email')}
+            />
+            <Pressable
+              accessibilityRole="button"
+              disabled={!!busy}
+              onPress={() => {
+                setMode('reset');
+                setError(null);
+                setNotice('');
+              }}
+              style={styles.forgotPassword}
+            >
+              <Text style={styles.smallLink}>Lupa password?</Text>
+            </Pressable>
+          </View>
         )}
         <AuthError message={error ?? sessionError} />
         {notice ? (
@@ -123,37 +149,81 @@ export default function LoginScreen() {
           busy={busy === 'email'}
           disabled={!!busy}
         />
-        {!resetting && (
-          <AuthButton
-            title="Lanjut dengan Google"
-            onPress={() => submit('google')}
-            busy={busy === 'google'}
-            disabled={!!busy}
-          />
+        {resetting ? (
+          <Text
+            accessibilityRole="button"
+            style={authStyles.link}
+            onPress={() => {
+              if (busy) return;
+              setMode('login');
+              setError(null);
+              setNotice('');
+            }}
+          >
+            Kembali ke masuk
+          </Text>
+        ) : (
+          <>
+            <View style={styles.divider}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>atau</Text>
+              <View style={styles.dividerLine} />
+            </View>
+            <AuthButton
+              title="Masuk dengan Google"
+              variant="google"
+              onPress={() => submit('google')}
+              busy={busy === 'google'}
+              disabled={!!busy}
+            />
+            {!busy && (
+              <View style={styles.footer}>
+                <Link href="/register" style={[styles.smallLink, styles.footerLink]}>
+                  <Text style={styles.footerPrompt}>Belum punya akun? </Text>Daftar
+                </Link>
+              </View>
+            )}
+          </>
         )}
-        <Text
-          accessibilityRole="button"
-          style={authStyles.link}
-          onPress={() => {
-            if (busy) return;
-            setMode(resetting ? 'login' : 'reset');
-            setError(null);
-            setNotice('');
-          }}
-        >
-          {resetting ? 'Kembali ke masuk' : 'Lupa password?'}
-        </Text>
       </View>
-      {!busy && !resetting && (
-        <>
-          <Link href="/register" style={authStyles.link}>
-            Belum punya akun? Daftar
-          </Link>
-          <Link href="/demo" style={authStyles.link}>
-            Coba demo lokal
-          </Link>
-        </>
-      )}
     </AuthScreen>
   );
 }
+
+const styles = StyleSheet.create({
+  forgotPassword: {
+    alignSelf: 'flex-end',
+    minHeight: 44,
+    justifyContent: 'center',
+  },
+  smallLink: {
+    color: BrandColors.forest,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  dividerLine: {
+    flex: 1,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: BrandColors.line,
+  },
+  dividerText: {
+    color: BrandColors.forestSoft,
+    fontSize: 13,
+  },
+  footer: {
+    alignItems: 'center',
+  },
+  footerLink: {
+    paddingVertical: 12,
+    textAlign: 'center',
+  },
+  footerPrompt: {
+    color: BrandColors.forestSoft,
+    fontWeight: '400',
+  },
+});
