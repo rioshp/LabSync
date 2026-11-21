@@ -1,16 +1,22 @@
 import {
+  collection,
   doc,
   getDocFromServer,
+  getDocsFromServer,
+  limit,
+  query,
   runTransaction,
   serverTimestamp,
+  where,
 } from '@react-native-firebase/firestore';
 
+import { firebaseErrorCode } from './firebase-error';
 import { firestoreSession, readId, readNim, readText } from './firestore-input';
 
-export async function lookupStudent(fields: Record<string, unknown>) {
+export type StudentCandidate = { studentUid: string; displayName: string; nim: string };
+
+async function beginStudentLookup(classId: string, term: { nim: string } | { name: string }) {
   const { db, uid } = await firestoreSession();
-  const classId = readId(fields.classId, 'Kelas');
-  const nim = readNim(fields.nim);
   const lookupRef = doc(db, 'studentLookups', uid);
   await runTransaction(db, async (tx) => {
     const previous = (await tx.get(lookupRef)).data();
@@ -22,13 +28,44 @@ export async function lookupStudent(fields: Record<string, unknown>) {
     const timestamp = serverTimestamp();
     tx.set(lookupRef, {
       classId,
-      nim,
+      ...term,
       windowStartedAt: inWindow ? start : timestamp,
       count: inWindow ? previous.count + 1 : 1,
       updatedAt: timestamp,
     });
   });
 
+  return db;
+}
+
+export async function lookupStudentsByName(
+  fields: Record<string, unknown>,
+): Promise<StudentCandidate[]> {
+  const classId = readId(fields.classId, 'Kelas');
+  const name = readText(fields.name, 'Nama lengkap', 1, 100);
+  const db = await beginStudentLookup(classId, { name });
+  const results = await getDocsFromServer(
+    query(
+      collection(db, 'users'),
+      where('displayName', '==', name),
+      where('role', '==', 'praktikan'),
+      where('accountStatus', '==', 'active'),
+      limit(10),
+    ),
+  );
+
+  return results.docs.flatMap((result) => {
+    const { displayName, nim } = result.data();
+    return typeof displayName === 'string' && typeof nim === 'string'
+      ? [{ studentUid: result.id, displayName, nim }]
+      : [];
+  });
+}
+
+export async function lookupStudent(fields: Record<string, unknown>) {
+  const classId = readId(fields.classId, 'Kelas');
+  const nim = readNim(fields.nim);
+  const db = await beginStudentLookup(classId, { nim });
   const empty = { studentUid: null, displayName: null, nim: null };
   const key = (await getDocFromServer(doc(db, 'studentKeys', nim))).data();
   if (!key) return empty;
@@ -45,13 +82,7 @@ export async function lookupStudent(fields: Record<string, unknown>) {
     }
     return empty;
   } catch (error) {
-    if (
-      error &&
-      typeof error === 'object' &&
-      'code' in error &&
-      String(error.code).split('/').pop() === 'permission-denied'
-    )
-      return empty;
+    if (firebaseErrorCode(error) === 'permission-denied') return empty;
     throw error;
   }
 }

@@ -25,18 +25,12 @@ function setup() {
       Timestamp,
       collection: (_db, ...segments) => ({ kind: 'collection', path: segments.join('/') }),
       doc: (_db, ...segments) => ({ kind: 'document', path: segments.join('/') }),
+      documentId: () => '__name__',
       where: (field, operator, value) => ({ kind: 'where', field, operator, value }),
       orderBy: (field, direction) => ({ kind: 'orderBy', field, direction }),
       query: (target, ...constraints) => ({ kind: 'query', target, constraints }),
-      onSnapshot: (target, optionsOrNext, nextOrError, error) => {
-        const hasOptions = typeof optionsOrNext !== 'function';
-        const listener = {
-          target,
-          options: hasOptions ? optionsOrNext : undefined,
-          next: hasOptions ? nextOrError : optionsOrNext,
-          error: hasOptions ? error : nextOrError,
-          stopped: false,
-        };
+      onSnapshot: (target, next, error) => {
+        const listener = { target, next, error, stopped: false };
         listeners.push(listener);
         return () => {
           listener.stopped = true;
@@ -44,13 +38,12 @@ function setup() {
       },
     },
   };
+  dependencies['./time'] = loadTypeScript('src/features/academic/time.ts');
   const api = loadTypeScript('src/features/academic/listeners.ts', dependencies);
   return { ...api, listeners };
 }
 
 const classData = (overrides = {}) => ({
-  practicumId: 'practicum-a',
-  practicumName: 'Basis Data',
   assistantUid: 'assistant-a',
   name: 'IF-3A',
   timeZone: 'Asia/Jakarta',
@@ -134,7 +127,6 @@ test('nested session parser accepts v2 statuses and rejects malformed data', () 
   const classInfo = {
     id: 'class-a',
     name: 'IF-3A',
-    practicumName: 'Basis Data',
     timeZone: 'Asia/Jakarta',
   };
   for (const status of ['scheduled', 'open', 'closed', 'cancelled']) {
@@ -150,12 +142,10 @@ test('nested session parser accepts v2 statuses and rejects malformed data', () 
   assert.equal(parsed.classId, 'class-a');
   for (const invalid of [
     { moduleTitle: '' },
-    { assistantUid: '' },
     { room: '' },
     { startsAt: null },
     { endsAt: new Timestamp(Date.parse('2026-11-15T00:00:00.000Z')) },
     { status: 'DIBUKA' },
-    { openedAt: 'now' },
   ]) {
     assert.throws(() => parseAcademicSession('session-a', sessionData(invalid), classInfo));
   }
@@ -164,15 +154,13 @@ test('nested session parser accepts v2 statuses and rejects malformed data', () 
 test('assistant reads only their classes and receives sorted nested session updates', async () => {
   const s = await subscribe('asisten', 'assistant-a');
   const classQuery = s.listeners[0];
-  assert.equal(classQuery.options.includeMetadataChanges, true);
   assert.equal(collectionPath(classQuery), 'classes');
   assert.deepEqual(classQuery.target.constraints, [
     { kind: 'where', field: 'assistantUid', operator: '==', value: 'assistant-a' },
   ]);
 
   emit(classQuery, [['class-a', classData()]]);
-  const classDoc = findListener(s.listeners, (listener) => docPath(listener) === 'classes/class-a');
-  emitDocument(classDoc, 'class-a', classData());
+  assert.ok(s.listeners.every(isQuery), 'advisor class query supplies its own documents');
   const sessionQuery = findListener(
     s.listeners,
     (listener) => isQuery(listener) && collectionPath(listener) === 'classes/class-a/sessions',
@@ -208,14 +196,8 @@ test('assistant reads only their classes and receives sorted nested session upda
     ['earlier', 'later'],
   );
   assert.equal(s.latest.loading, false);
-  assert.equal(s.latest.offline, true);
   emit(sessionQuery, [['earlier', sessionData({ status: 'open' })]]);
   assert.equal(s.latest.sessions[0].status, 'open');
-  assert.equal(s.latest.offline, false);
-  emit(sessionQuery, [['earlier', sessionData({ status: 'open' })]], true);
-  assert.equal(s.latest.offline, true);
-  emit(sessionQuery, [['earlier', sessionData({ status: 'open' })]], false);
-  assert.equal(s.latest.offline, false);
   s.stop();
   assert.ok(s.listeners.every((listener) => listener.stopped));
 });
@@ -228,7 +210,7 @@ test('student with no active enrollment gets an empty schedule', async () => {
   ]);
   emit(s.listeners[0], [], true);
   assert.equal(s.listeners.length, 1);
-  assert.deepEqual(s.latest, { sessions: [], loading: false, offline: true });
+  assert.deepEqual(s.latest, { sessions: [], loading: false });
   s.stop();
 });
 
@@ -260,9 +242,6 @@ test('student schedule combines only active enrolled classes and updates in real
     ['session-a', 'session-b'],
   );
   assert.equal(s.latest.loading, false);
-  assert.equal(s.latest.offline, true);
-  emit(sessionsB, [['session-b', sessionData()]], false);
-  assert.equal(s.latest.offline, false);
   s.stop();
   assert.ok(s.listeners.every((listener) => listener.stopped));
 });
@@ -270,15 +249,13 @@ test('student schedule combines only active enrolled classes and updates in real
 test('archived classes stop contributing to the live schedule', async () => {
   const s = await subscribe('asisten', 'assistant-a');
   emit(s.listeners[0], [['class-a', classData()]]);
-  const classDoc = findListener(s.listeners, (listener) => docPath(listener) === 'classes/class-a');
-  emitDocument(classDoc, 'class-a', classData());
   const sessions = findListener(
     s.listeners,
     (listener) => isQuery(listener) && collectionPath(listener) === 'classes/class-a/sessions',
   );
   emit(sessions, [['session-a', sessionData()]]);
   assert.equal(s.latest.sessions.length, 1);
-  emitDocument(classDoc, 'class-a', classData({ status: 'archived' }));
+  emit(s.listeners[0], [['class-a', classData({ status: 'archived' })]]);
   assert.deepEqual(s.latest.sessions, []);
   assert.equal(sessions.stopped, true);
   const count = s.states.length;
@@ -287,11 +264,9 @@ test('archived classes stop contributing to the live schedule', async () => {
   s.stop();
 });
 
-test('class metadata changes do not restart the session listener', async () => {
+test('updates to session counts do not restart the session listener', async () => {
   const s = await subscribe('asisten', 'assistant-a');
-  emit(s.listeners[0], [['class-a', classData()]]);
-  const classDoc = findListener(s.listeners, (listener) => docPath(listener) === 'classes/class-a');
-  emitDocument(classDoc, 'class-a', classData(), true);
+  emit(s.listeners[0], [['class-a', classData()]], true);
   const sessions = findListener(
     s.listeners,
     (listener) => collectionPath(listener) === 'classes/class-a/sessions',
@@ -299,11 +274,10 @@ test('class metadata changes do not restart the session listener', async () => {
   emit(sessions, [['session-a', sessionData()]]);
   const listenerCount = s.listeners.length;
 
-  emitDocument(classDoc, 'class-a', classData());
+  emit(s.listeners[0], [['class-a', classData({ unfinishedSessionCount: 3 })]]);
   assert.equal(s.listeners.length, listenerCount);
   assert.equal(sessions.stopped, false);
   assert.equal(s.latest.loading, false);
-  assert.equal(s.latest.offline, false);
   s.stop();
 });
 
@@ -355,7 +329,7 @@ test('cancel before Firebase loads never attaches a listener', async () => {
 });
 
 test('schedule separates open and scheduled sessions from completed or cancelled sessions', () => {
-  const { groupSchedule } = loadTypeScript('src/features/academic/schedule-groups.ts');
+  const { groupSchedule } = loadTypeScript('src/features/academic/time.ts');
   const session = (id, status, time) => ({ id, status, startsAt: new Timestamp(time) });
 
   const groups = groupSchedule(
@@ -385,4 +359,57 @@ test('schedule separates open and scheduled sessions from completed or cancelled
     groups.past.map((item) => item.id),
     ['cancelled', 'completed'],
   );
+});
+
+test('session review summary watches only the selected session owned by the assistant', async () => {
+  const { listeners, subscribeSessionReviewSummary } = setup();
+  const summaries = [];
+  const stop = subscribeSessionReviewSummary(
+    'assistant-a',
+    'class-a',
+    'session-a',
+    (value) => summaries.push(value),
+    assert.fail,
+  );
+  await new Promise(setImmediate);
+  const listener = findListener(listeners, (entry) => collectionPath(entry) === 'reviewSummaries');
+  assert.deepEqual(
+    listener.target.constraints.map(({ field, operator, value }) => [field, operator, value]),
+    [
+      ['assistantUid', '==', 'assistant-a'],
+      ['classId', '==', 'class-a'],
+      ['__name__', '==', 'session-a'],
+    ],
+  );
+  emit(listener, []);
+  assert.equal(summaries.at(-1).totalSubmitted, 0);
+  emit(listener, [['session-a', { totalSubmitted: 3, positiveCount: 1, failedCount: 1 }]]);
+  assert.equal(summaries.at(-1).pendingCount, 1);
+  stop();
+  assert.equal(listener.stopped, true);
+});
+
+test('session detail watches one session and uses the class already loaded by the app', async () => {
+  const { listeners, subscribeAssistantSession } = setup();
+  let value;
+  const stop = subscribeAssistantSession(
+    { id: 'class-a', name: 'IF-3A', timeZone: 'Asia/Jakarta' },
+    'session-a',
+    (session) => {
+      value = session;
+    },
+    assert.fail,
+  );
+  await new Promise(setImmediate);
+  assert.equal(listeners.length, 1);
+  const [listener] = listeners;
+  assert.equal(collectionPath(listener), 'classes/class-a/sessions');
+  assert.deepEqual(listener.target.constraints, [
+    { kind: 'where', field: '__name__', operator: '==', value: 'session-a' },
+  ]);
+  emit(listener, [['session-a', sessionData({ status: 'closed' })]]);
+  assert.equal(value.className, 'IF-3A');
+  assert.equal(value.status, 'closed');
+  stop();
+  assert.equal(listener.stopped, true);
 });

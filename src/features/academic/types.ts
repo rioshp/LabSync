@@ -1,26 +1,12 @@
 import type { Timestamp } from '@react-native-firebase/firestore';
 
-export type ResourceStatus = 'active' | 'archived';
-export type ClassStatus = ResourceStatus;
 export type AcademicSessionStatus = 'scheduled' | 'open' | 'closed' | 'cancelled';
-
-export type Practicum = {
-  id: string;
-  assistantUid: string;
-  name: string;
-  status: ResourceStatus;
-  activeClassCount: number;
-  totalClassCount: number;
-};
 
 export type AcademicClass = {
   id: string;
-  practicumId: string;
-  practicumName: string;
-  assistantUid: string;
   name: string;
   timeZone: string;
-  status: ClassStatus;
+  status: 'active' | 'archived';
   unfinishedSessionCount: number;
 };
 
@@ -38,8 +24,6 @@ export type AcademicSession = {
   id: string;
   classId: string;
   className: string;
-  practicum: string;
-  assistantUid: string;
   module: string;
   room: string;
   startsAt: Timestamp;
@@ -50,9 +34,6 @@ export type AcademicSession = {
   endTime: string;
   timeZone: string;
   status: AcademicSessionStatus;
-  openedAt: Timestamp | null;
-  closedAt: Timestamp | null;
-  cancelledAt: Timestamp | null;
 };
 
 export type AttendanceRecord = {
@@ -73,4 +54,4 @@ export type ReviewSummary = {
   pendingCount: number;
 };
 
-export type ScheduleState = { sessions: AcademicSession[]; loading: boolean; offline: boolean };
+export type ScheduleState = { sessions: AcademicSession[]; loading: boolean };

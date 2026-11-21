@@ -14,7 +14,7 @@ export const BrandColors = {
   pageBackground: '#F4FAF7',
 } as const;
 
-/** One presentation for the statuses stored in Firestore and used by the local demo. */
+/** Tampilan status sesi yang disimpan di Firestore. */
 export const SessionStatusStyles = {
   scheduled: { label: 'Belum dibuka', bg: '#FEF6DB', text: '#8A6100' },
   open: { label: 'Terbuka', bg: '#E3F1E5', text: '#0B4B46' },

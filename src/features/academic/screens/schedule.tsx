@@ -6,17 +6,16 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AuthButton } from '@/components/auth-screen';
 import { BrandColors, SessionStatusStyles } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
-import { useSchedule } from '@/hooks/useSchedule';
+import { formatSessionRange, groupSchedule } from '@/features/academic/time';
 import type { AcademicSession } from '@/features/academic/types';
-import { formatSessionRange } from '@/features/academic/time';
+import { useSchedule } from '@/features/academic/useAcademic';
 
-import { groupSchedule } from '../schedule-groups';
 import { styles } from './schedule.styles';
 
 export default function ScheduleScreen() {
   const insets = useSafeAreaInsets();
-  const { profile, role } = useAuth();
-  const { sessions, loading, error, retry, offline } = useSchedule();
+  const { user, profile, role } = useAuth();
+  const { value: sessions, loading, error, retry } = useSchedule(user?.uid, role);
   const isAssistant = role === 'asisten';
   const [showPast, setShowPast] = useState(false);
   const { open, upcoming, overdue, past } = groupSchedule(sessions);
@@ -31,7 +30,7 @@ export default function ScheduleScreen() {
 
   function openSession(session: AcademicSession) {
     router.push({
-      pathname: isAssistant ? '/(app)/asisten/sesi' : '/(app)/praktikan/presensi',
+      pathname: isAssistant ? '/asisten/sesi' : '/praktikan/presensi',
       params: { classId: session.classId, sessionId: session.id },
     });
   }
@@ -76,21 +75,16 @@ export default function ScheduleScreen() {
           {isAssistant && (
             <Pressable
               accessibilityRole="button"
-              onPress={() => router.push('/(app)/asisten/praktikum')}
+              onPress={() => router.navigate('/asisten/praktikum')}
               style={({ pressed }) => [styles.manageLink, pressed && styles.pressed]}
             >
-              <Text style={styles.manageLinkText}>Kelola praktikum</Text>
+              <Text style={styles.manageLinkText}>Kelas praktikum</Text>
               <Text accessibilityElementsHidden style={styles.manageLinkArrow}>
                 ›
               </Text>
             </Pressable>
           )}
         </View>
-        {offline && (
-          <Text accessibilityLiveRegion="polite" style={styles.offlineNotice}>
-            Jadwal mungkin belum terbaru. Periksa koneksi.
-          </Text>
-        )}
 
         <View style={styles.section}>
           {(past.length > 0 || showPast) && (
@@ -183,8 +177,7 @@ export default function ScheduleScreen() {
                           </View>
                         </View>
                         <View style={styles.sessionHeading}>
-                          <Text style={styles.cardTitle}>{session.practicum}</Text>
-                          <Text style={styles.description}>{session.module}</Text>
+                          <Text style={styles.cardTitle}>{session.module}</Text>
                         </View>
                         <View style={styles.details}>
                           <View style={styles.detailRow}>

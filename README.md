@@ -11,9 +11,9 @@ Aplikasi React Native untuk praktikum: jadwal kelas, sesi, presensi realtime, iz
 ## Membaca kode
 
 - Mulai dari URL atau tab di `src/app`. File rute menunjuk ke layar di `src/features`; gaya layar akademik berada di file `.styles.ts` di sebelahnya.
-- Baca `src/features/academic/listeners.ts` untuk alur jadwal. Daftar kelas menentukan listener sesi yang perlu hidup. Perubahan metadata cache hanya mengubah indikator koneksi. Listener sesi lama tidak boleh mengisi kembali kelas yang sudah diarsipkan atau dilepas.
+- Hook jadwal, kelas, dan sesi ada di `src/features/academic/useAcademic.ts`. Listener Firestore ada di `src/features/academic/listeners.ts`. Detail sesi memakai data kelas yang sudah dimuat dan mendengarkan satu sesi.
 - Alur baca dan tulis terpisah. Layar mendengarkan Firestore melalui hook dan mengirim perubahan melalui `src/lib/mutations.ts`. Firestore Security Rules memeriksa peran dan kepemilikan sebelum commit.
-- Fungsi di `src/lib` menangani profil, praktikum, kelas, sesi, peserta, presensi, izin, dan ulasan. Sentimen dihitung di perangkat saat ulasan dikirim.
+- Fungsi di `src/lib` menangani profil, kelas praktikum, sesi, peserta, presensi, izin, dan ulasan. Sentimen dihitung di perangkat saat ulasan dikirim.
 
 Konfigurasi format ada di `.prettierrc.json`. Untuk menerapkannya ke sumber, tes, dan konfigurasi JavaScript tanpa menjalankan build:
 
@@ -41,11 +41,7 @@ Untuk menjalankan aplikasi, gunakan development build Android, lalu `npx expo st
 
 ## Akun demo untuk pengujian
 
-Tombol **Demo** di kanan layar masuk development build mengisi email dan password saja. Tekan **Masuk** untuk login ke proyek Firebase yang dipakai aplikasi. Peran tetap ditentukan oleh profil Firebase.
-
-1. Siapkan dua akun uji di Firebase Authentication dengan email terverifikasi dan profil aktif. Lengkapi profil praktikan di aplikasi dan buat profil asisten melalui [skrip administratif](functions/README.md). Gunakan kelas dan data uji yang terpisah dari kelas nyata.
-2. Isi empat variabel `EXPO_PUBLIC_DEMO_*` dari `.env.example` di `.env.local`. Kosongkan `EXPO_PUBLIC_FIREBASE_EMULATOR_HOST` untuk login ke Firebase aktif, lalu mulai ulang Metro.
-3. Simpan kredensial akun uji hanya untuk development. Nilai `EXPO_PUBLIC_*` dapat dibaca dari bundle development, jadi gunakan akun dummy dan jangan masukkan preset ke konfigurasi rilis atau akun pribadi.
+Masukkan email dan password akun demo langsung di layar masuk. Kosongkan `EXPO_PUBLIC_FIREBASE_EMULATOR_HOST` untuk memakai Firebase aktif. Peran praktikan dan asisten mengikuti profil Firestore.
 
 ## Login dengan Google pada Android
 
@@ -74,6 +70,6 @@ Aturan ini memakai skema Sprint 2. Data lama yang memakai nama field atau path s
 ## Demo penerimaan
 
 1. Dengan build Android, buat pengguna praktikan melalui registrasi email, verifikasi email dan lengkapi profil; ulangi dengan Google. Uji logout, reset, loading, pembatalan, dan masuk ulang.
-2. Dengan akun asisten yang diprovisikan operator, buat praktikum, kelas, peserta dan dua atau lebih sesi. Gunakan dua perangkat untuk menguji jadwal sesuai kelas, buka sesi, presensi tunggal, rekap realtime, dan penutupan.
-3. Pada sesi lain ajukan izin, ambil keputusan sebagai asisten, dan lihat status pada perangkat praktikan. Uji persetujuan dan penolakan. Setelah sesi pertama selesai, kirim ulasan dan periksa hasil/ringkasan sentimen.
+2. Dengan akun asisten yang diprovisikan operator, buat kelas dari **Kelas Praktikum**. Buka kelas dan pilih tab **Peserta**, cari dengan NIM atau nama lengkap sesuai profil, lalu konfirmasi peserta yang akan ditambahkan. Buat dua atau lebih sesi dari tab **Sesi**. Gunakan dua perangkat untuk menguji jadwal sesuai kelas, buka sesi, presensi tunggal, rekap realtime, dan penutupan.
+3. Pada sesi lain ajukan izin, ambil keputusan sebagai asisten, dan lihat status pada perangkat praktikan. Uji persetujuan dan penolakan. Setelah sesi pertama selesai, kirim ulasan. Sebagai asisten, buka **Praktikum → pilih kelas → Sesi → Ulasan & AI** pada sesi tersebut untuk melihat ringkasan sentimen. Teks ulasan tersedia untuk praktikan penulis.
 4. Ulangi agar minimal lima perubahan untuk setiap jenis realtime tercatat. Ukur waktu dari keberhasilan aksi sampai status di perangkat kedua; target demo adalah paling lama 3 detik pada koneksi stabil. Uji jaringan putus, restart, pembesaran teks, dan pembaca layar.

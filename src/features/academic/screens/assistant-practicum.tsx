@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -15,13 +15,13 @@ import { AuthButton } from '@/components/auth-screen';
 import { BrandColors, SessionStatusStyles } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
 import { mutationError, mutate, newRequestId } from '@/lib/mutations';
+import type { StudentCandidate } from '@/lib/roster';
 import {
   useAssistantClasses,
-  useAssistantPracticums,
   useClassRoster,
   useClassSessions,
 } from '@/features/academic/useAcademic';
-import type { AcademicClass, AcademicSession, Practicum } from '@/features/academic/types';
+import type { AcademicClass, AcademicSession } from '@/features/academic/types';
 import { formatSessionRange, zonedDateTimeToEpochMs } from '@/features/academic/time';
 
 import { styles } from './assistant-practicum.styles';
@@ -39,8 +39,7 @@ type Draft = {
 };
 
 type Dialog =
-  | { kind: 'practicum'; item?: Practicum }
-  | { kind: 'class'; practicumId: string; item?: AcademicClass }
+  | { kind: 'class'; item?: AcademicClass }
   | { kind: 'session'; classInfo: AcademicClass; item?: AcademicSession }
   | {
       kind: 'confirm';
@@ -64,43 +63,50 @@ const EMPTY_DRAFT: Draft = {
 };
 
 export default function AssistantPracticumRoute() {
+  return <AssistantPracticumScreen classDetail={false} />;
+}
+
+export function AssistantClassRoute() {
+  return <AssistantPracticumScreen classDetail />;
+}
+
+function AssistantPracticumScreen({ classDetail }: { classDetail: boolean }) {
   const insets = useSafeAreaInsets();
   const { user, role } = useAuth();
   const uid = user?.uid;
-  const practicumsState = useAssistantPracticums(uid);
-  const practicums = practicumsState.value;
-  const [selectedPracticumId, setSelectedPracticumId] = useState<string | null>(null);
-  const selectedPracticum =
-    practicums.find((item) => item.id === selectedPracticumId) ?? practicums[0] ?? null;
-  const classesState = useAssistantClasses(uid, selectedPracticum?.id ?? null);
+  const { classId } = useLocalSearchParams<{ classId?: string }>();
+  const [classTab, setClassTab] = useState<'Peserta' | 'Sesi'>('Peserta');
+  const classesState = useAssistantClasses();
   const classes = classesState.value;
-  const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
-  const selectedClass =
-    classes.find((item) => item.id === selectedClassId) ??
-    classes.find((item) => item.status === 'active') ??
-    classes[0] ??
-    null;
+  const selectedClass = classDetail ? (classes.find((item) => item.id === classId) ?? null) : null;
   const rosterState = useClassRoster(uid, selectedClass?.id ?? null);
-  const sessionsState = useClassSessions(uid, selectedClass?.id ?? null);
+  const sessionsState = useClassSessions(selectedClass);
   const [dialog, setDialog] = useState<Dialog | null>(null);
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const [screenMessage, setScreenMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [nimInput, setNimInput] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [searchByName, setSearchByName] = useState(false);
+  const [studentMatches, setStudentMatches] = useState<{
+    classId: string;
+    students: StudentCandidate[];
+  } | null>(null);
   const [rosterError, setRosterError] = useState<string | null>(null);
   const [lookingUpStudent, setLookingUpStudent] = useState(false);
   const formLock = useRef(false);
   const confirmLock = useRef(false);
   const rosterLock = useRef(false);
 
-  function openPracticumForm(item?: Practicum) {
-    setDraft({ ...EMPTY_DRAFT, name: item?.name ?? '', requestId: newRequestId() });
-    setDialogError(null);
-    setDialog({ kind: 'practicum', item });
+  function openClass(classId: string) {
+    router.push({ pathname: '/asisten/kelas', params: { classId } });
   }
 
-  function openClassForm(practicumId: string, item?: AcademicClass) {
+  function openSession({ classId, id }: AcademicSession, section?: 'ulasan') {
+    router.push({ pathname: '/asisten/sesi', params: { classId, sessionId: id, section } });
+  }
+
+  function openClassForm(item?: AcademicClass) {
     setDraft({
       ...EMPTY_DRAFT,
       name: item?.name ?? '',
@@ -108,7 +114,7 @@ export default function AssistantPracticumRoute() {
       requestId: newRequestId(),
     });
     setDialogError(null);
-    setDialog({ kind: 'class', practicumId, item });
+    setDialog({ kind: 'class', item });
   }
 
   function openSessionForm(classInfo: AcademicClass, item?: AcademicSession) {
@@ -135,23 +141,6 @@ export default function AssistantPracticumRoute() {
   ) {
     setDialogError(null);
     setDialog({ kind: 'confirm', title, message, label, onConfirm, destructive });
-  }
-
-  function requestArchivePracticum(item: Practicum) {
-    if (item.activeClassCount > 0) {
-      setScreenMessage(
-        `Arsip ${item.name} belum tersedia karena masih memiliki ${item.activeClassCount} kelas aktif. Arsipkan kelasnya terlebih dahulu.`,
-      );
-      return;
-    }
-    askForConfirmation(
-      'Arsipkan praktikum?',
-      `${item.name} akan disembunyikan dari daftar aktif. Riwayat tetap tersimpan.`,
-      'Arsipkan',
-      async () => {
-        await mutate('archivePracticum', { practicumId: item.id });
-      },
-    );
   }
 
   function requestArchiveClass(item: AcademicClass) {
@@ -200,37 +189,20 @@ export default function AssistantPracticumRoute() {
     setDialogError(null);
     setBusy(true);
     try {
-      if (dialog.kind === 'practicum') {
-        const name = draft.name.trim();
-        if (!name || name.length > 100)
-          throw new Error('Nama praktikum wajib diisi, maksimal 100 karakter.');
-        if (dialog.item) await mutate('updatePracticum', { practicumId: dialog.item.id, name });
-        else await mutate('createPracticum', { name, requestId: draft.requestId });
-      } else if (dialog.kind === 'class') {
-        const name = draft.name.trim();
-        const timeZone = draft.timeZone.trim();
-        if (!name || name.length > 100)
-          throw new Error('Nama kelas wajib diisi, maksimal 100 karakter.');
-        try {
-          new Intl.DateTimeFormat('en', { timeZone }).format(new Date());
-        } catch {
-          throw new Error('Masukkan zona waktu IANA yang valid, misalnya Asia/Jakarta.');
-        }
+      let createdClassId: string | undefined;
+      if (dialog.kind === 'class') {
+        const { name, timeZone } = draft;
         if (dialog.item) await mutate('updateClass', { classId: dialog.item.id, name, timeZone });
-        else
-          await mutate('createClass', {
-            practicumId: dialog.practicumId,
+        else {
+          const { id } = await mutate<{ id: string }>('createClass', {
             name,
             timeZone,
             requestId: draft.requestId,
           });
+          createdClassId = id;
+        }
       } else {
-        const moduleTitle = draft.moduleTitle.trim();
-        const room = draft.room.trim();
-        if (!moduleTitle || moduleTitle.length > 120)
-          throw new Error('Topik wajib diisi, maksimal 120 karakter.');
-        if (!room || room.length > 120)
-          throw new Error('Ruang wajib diisi, maksimal 120 karakter.');
+        const { moduleTitle, room } = draft;
         const startsAt = zonedDateTimeToEpochMs(
           draft.date,
           draft.startTime,
@@ -241,28 +213,15 @@ export default function AssistantPracticumRoute() {
           draft.endTime,
           dialog.classInfo.timeZone,
         );
-        if (endsAt <= startsAt) throw new Error('Waktu selesai harus setelah waktu mulai.');
+        const schedule = { classId: dialog.classInfo.id, moduleTitle, room, startsAt, endsAt };
         if (dialog.item) {
-          await mutate('updateSession', {
-            classId: dialog.classInfo.id,
-            sessionId: dialog.item.id,
-            moduleTitle,
-            room,
-            startsAt,
-            endsAt,
-          });
+          await mutate('updateSession', { ...schedule, sessionId: dialog.item.id });
         } else {
-          await mutate('createSession', {
-            classId: dialog.classInfo.id,
-            moduleTitle,
-            room,
-            startsAt,
-            endsAt,
-            requestId: draft.requestId,
-          });
+          await mutate('createSession', { ...schedule, requestId: draft.requestId });
         }
       }
       setDialog(null);
+      if (createdClassId) openClass(createdClassId);
       setScreenMessage(null);
     } catch (error) {
       setDialogError(mutationError(error));
@@ -289,36 +248,53 @@ export default function AssistantPracticumRoute() {
     }
   }
 
-  async function findStudent() {
-    const nim = nimInput.trim();
-    if (!selectedClass || !nim || rosterLock.current) return;
-
+  function confirmStudent(candidate: StudentCandidate) {
+    if (!selectedClass) return;
     const { id: classId, name: className } = selectedClass;
+    const { displayName, nim } = candidate;
+    askForConfirmation(
+      'Tambah peserta?',
+      `${displayName} (NIM ${nim}) akan ditambahkan ke kelas ${className}.`,
+      'Tambah peserta',
+      async () => {
+        await mutate('addStudent', { classId, ...candidate });
+        setSearchInput('');
+        setStudentMatches(null);
+      },
+      false,
+    );
+  }
+
+  async function findStudent() {
+    const term = searchInput.trim();
+    if (!selectedClass || !term || rosterLock.current) return;
+
+    const { id: classId } = selectedClass;
     rosterLock.current = true;
     setLookingUpStudent(true);
     setRosterError(null);
+    setStudentMatches(null);
     try {
+      if (searchByName) {
+        const students = await mutate<StudentCandidate[]>('lookupStudentsByName', {
+          classId,
+          name: term,
+        });
+        if (students.length) setStudentMatches({ classId, students });
+        else setRosterError('Tidak ada praktikan aktif dengan nama lengkap tersebut.');
+        return;
+      }
       const candidate = await mutate<{
         studentUid: string | null;
         displayName: string | null;
         nim: string | null;
-      }>('lookupStudent', { classId, nim });
-      const { studentUid, displayName, nim: matchedNim } = candidate;
-      if (!studentUid || !displayName || !matchedNim) {
+      }>('lookupStudent', { classId, nim: term });
+      const { studentUid, displayName, nim } = candidate;
+      if (!studentUid || !displayName || !nim) {
         setRosterError('Tidak ada akun praktikan aktif dengan NIM tersebut.');
         return;
       }
-
-      askForConfirmation(
-        'Tambah peserta?',
-        `${displayName} (NIM ${matchedNim}) akan ditambahkan ke kelas ${className}.`,
-        'Tambah peserta',
-        async () => {
-          await mutate('addStudent', { classId, nim: matchedNim, studentUid, displayName });
-          setNimInput('');
-        },
-        false,
-      );
+      confirmStudent({ studentUid, displayName, nim });
     } catch (error) {
       setRosterError(mutationError(error));
     } finally {
@@ -340,23 +316,29 @@ export default function AssistantPracticumRoute() {
   return (
     <View style={styles.screen}>
       <ScrollView
+        key={classDetail ? classTab : 'classes'}
         contentContainerStyle={[
           styles.content,
-          { paddingTop: 16, paddingBottom: insets.bottom + 32 },
+          { paddingTop: (classDetail ? insets.top : 0) + 16, paddingBottom: insets.bottom + 32 },
         ]}
         keyboardShouldPersistTaps="handled"
       >
-        <Text accessibilityRole="header" style={styles.title}>
-          Kelola praktikum
-        </Text>
-        {[practicumsState, classesState, rosterState, sessionsState].some(
-          (source) => source.offline,
-        ) && (
-          <Text accessibilityLiveRegion="polite" style={styles.offlineNotice}>
-            Data mungkin belum terbaru. Periksa koneksi sebelum menyimpan.
+        {classDetail ? (
+          <Pressable
+            accessibilityRole="button"
+            style={styles.backButton}
+            onPress={() => {
+              if (router.canGoBack()) router.back();
+              else router.replace('/asisten/praktikum');
+            }}
+          >
+            <Text style={styles.linkText}>‹ Daftar kelas</Text>
+          </Pressable>
+        ) : (
+          <Text accessibilityRole="header" style={styles.title}>
+            Kelas Praktikum
           </Text>
         )}
-
         {screenMessage ? (
           <View style={styles.notice}>
             <Text style={styles.noticeText}>{screenMessage}</Text>
@@ -366,305 +348,276 @@ export default function AssistantPracticumRoute() {
           </View>
         ) : null}
 
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View>
-              <Text accessibilityRole="header" style={styles.sectionTitle}>
-                Praktikum
-              </Text>
-            </View>
+        {!classDetail && (
+          <View style={styles.section}>
             <Pressable
               accessibilityRole="button"
-              onPress={() => openPracticumForm()}
+              onPress={() => openClassForm()}
               style={styles.primaryButton}
             >
-              <Text style={styles.primaryButtonText}>Buat praktikum</Text>
+              <Text style={styles.primaryButtonText}>Buat kelas praktikum</Text>
             </Pressable>
-          </View>
-          {practicumsState.loading ? (
-            <Loading label="Memuat praktikum..." />
-          ) : practicumsState.error ? (
-            <LoadError message={practicumsState.error} retry={practicumsState.retry} />
-          ) : practicums.length === 0 ? (
-            <EmptyCard
-              title="Belum ada praktikum"
-              body="Buat praktikum pertama untuk mulai menambahkan kelas dan jadwal."
-            />
-          ) : (
-            practicums.map((item) => {
-              const selected = selectedPracticum?.id === item.id;
-              return (
-                <View
-                  key={item.id}
-                  style={[styles.resourceCard, selected && styles.resourceCardSelected]}
-                >
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityState={{ selected }}
-                    onPress={() => {
-                      setSelectedPracticumId(item.id);
-                      setSelectedClassId(null);
-                      setScreenMessage(null);
-                    }}
-                    style={styles.resourceMain}
-                  >
-                    <View style={styles.resourceTop}>
-                      <Text style={styles.cardTitle}>{item.name}</Text>
-                      <StatusPill
-                        label={item.status === 'active' ? 'Aktif' : 'Diarsipkan'}
-                        archived={item.status === 'archived'}
-                      />
-                    </View>
-                    <Text style={styles.description}>
-                      {item.activeClassCount} kelas aktif · {item.totalClassCount} total kelas
-                    </Text>
-                  </Pressable>
-                  {item.status === 'active' && (
-                    <View style={styles.resourceActions}>
-                      <SmallButton label="Ubah" onPress={() => openPracticumForm(item)} />
-                      <SmallButton
-                        label="Arsipkan"
-                        danger
-                        onPress={() => requestArchivePracticum(item)}
-                      />
-                    </View>
-                  )}
-                </View>
-              );
-            })
-          )}
-        </View>
-
-        {selectedPracticum ? (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View>
-                <Text accessibilityRole="header" style={styles.sectionTitle}>
-                  Kelas
-                </Text>
-                <Text style={styles.description}>{selectedPracticum.name}</Text>
-              </View>
-              {selectedPracticum.status === 'active' && (
-                <Pressable
-                  accessibilityRole="button"
-                  onPress={() => openClassForm(selectedPracticum.id)}
-                  style={styles.secondaryButton}
-                >
-                  <Text style={styles.secondaryButtonText}>Buat kelas</Text>
-                </Pressable>
-              )}
-            </View>
             {classesState.loading ? (
               <Loading label="Memuat kelas..." />
             ) : classesState.error ? (
               <LoadError message={classesState.error} retry={classesState.retry} />
             ) : classes.length === 0 ? (
               <EmptyCard
-                title="Belum ada kelas"
-                body="Tambahkan kelas untuk mengelola peserta dan membuat sesi."
+                title="Belum ada kelas praktikum"
+                body="Buat kelas untuk menambahkan peserta dan menjadwalkan sesi."
               />
             ) : (
-              classes.map((item) => {
-                const selected = selectedClass?.id === item.id;
-                return (
-                  <View
-                    key={item.id}
-                    style={[styles.resourceCard, selected && styles.resourceCardSelected]}
-                  >
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                      onPress={() => {
-                        setSelectedClassId(item.id);
-                        setRosterError(null);
-                      }}
-                      style={styles.resourceMain}
-                    >
-                      <View style={styles.resourceTop}>
-                        <Text style={styles.cardTitle}>{item.name}</Text>
-                        <StatusPill
-                          label={item.status === 'active' ? 'Aktif' : 'Diarsipkan'}
-                          archived={item.status === 'archived'}
-                        />
-                      </View>
-                      <Text style={styles.description}>
-                        {item.timeZone} · {item.unfinishedSessionCount} sesi belum selesai
-                      </Text>
-                    </Pressable>
-                    {item.status === 'active' && (
-                      <View style={styles.resourceActions}>
-                        {selected && (
-                          <Pressable
-                            accessibilityRole="button"
-                            onPress={() => openSessionForm(item)}
-                            style={styles.secondaryButton}
-                          >
-                            <Text style={styles.secondaryButtonText}>Buat sesi</Text>
-                          </Pressable>
-                        )}
-                        <SmallButton
-                          label="Ubah"
-                          onPress={() => openClassForm(selectedPracticum.id, item)}
-                        />
-                        <SmallButton
-                          label="Arsipkan"
-                          danger
-                          onPress={() => requestArchiveClass(item)}
-                        />
-                      </View>
-                    )}
+              classes.map((item) => (
+                <Pressable
+                  key={item.id}
+                  accessibilityRole="button"
+                  accessibilityLabel={'Buka kelas ' + item.name}
+                  onPress={() => openClass(item.id)}
+                  style={styles.resourceCard}
+                >
+                  <View style={styles.resourceTop}>
+                    <Text style={styles.cardTitle}>{item.name}</Text>
+                    <StatusPill
+                      label={item.status === 'active' ? 'Aktif' : 'Diarsipkan'}
+                      archived={item.status === 'archived'}
+                    />
                   </View>
-                );
-              })
+                  <Text style={styles.description}>
+                    {item.unfinishedSessionCount} sesi belum selesai
+                  </Text>
+                </Pressable>
+              ))
             )}
           </View>
-        ) : null}
+        )}
+
+        {classDetail &&
+          !selectedClass &&
+          (classesState.loading ? (
+            <Loading label="Memuat kelas..." />
+          ) : classesState.error ? (
+            <LoadError message={classesState.error} retry={classesState.retry} />
+          ) : (
+            <EmptyCard title="Kelas tidak ditemukan" />
+          ))}
 
         {selectedClass ? (
           <>
             <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <View>
-                  <Text accessibilityRole="header" style={styles.sectionTitle}>
-                    Peserta kelas
-                  </Text>
-                  <Text style={styles.description}>
-                    {selectedClass.name}
-                    {!rosterState.loading && !rosterState.error && rosterState.value.length > 0
-                      ? ' · ' + rosterState.value.length + ' peserta aktif'
-                      : ''}
-                  </Text>
-                </View>
-              </View>
+              <Text accessibilityRole="header" style={styles.title}>
+                {selectedClass.name}
+              </Text>
               {selectedClass.status === 'active' && (
-                <View style={styles.addStudentRow}>
-                  <TextInput
-                    accessibilityLabel="Cari berdasarkan NIM"
-                    value={nimInput}
-                    onChangeText={setNimInput}
-                    placeholder="Cari berdasarkan NIM"
-                    placeholderTextColor={BrandColors.muted}
-                    autoCapitalize="characters"
-                    editable={!lookingUpStudent}
-                    maxLength={30}
-                    returnKeyType="search"
-                    onSubmitEditing={() => void findStudent()}
-                    style={[styles.input, styles.nimInput]}
+                <View style={styles.resourceActions}>
+                  <SmallButton label="Ubah kelas" onPress={() => openClassForm(selectedClass)} />
+                  <SmallButton
+                    label="Arsipkan"
+                    danger
+                    onPress={() => requestArchiveClass(selectedClass)}
                   />
-                  <Pressable
-                    accessibilityRole="button"
-                    disabled={!nimInput.trim() || lookingUpStudent}
-                    onPress={() => void findStudent()}
-                    style={[
-                      styles.primaryButton,
-                      (!nimInput.trim() || lookingUpStudent) && styles.buttonDisabled,
-                    ]}
-                  >
-                    {lookingUpStudent ? (
-                      <ActivityIndicator color={BrandColors.paper} />
-                    ) : (
-                      <Text style={styles.primaryButtonText}>Cari</Text>
-                    )}
-                  </Pressable>
                 </View>
               )}
-              {rosterError ? (
-                <Text accessibilityRole="alert" style={styles.errorText}>
-                  {rosterError}
-                </Text>
-              ) : null}
-              {rosterState.loading ? (
-                <Loading label="Memuat peserta..." />
-              ) : rosterState.error ? (
-                <LoadError message={rosterState.error} retry={rosterState.retry} />
-              ) : rosterState.value.length === 0 ? (
-                <EmptyCard title="Belum ada peserta" />
-              ) : (
-                rosterState.value.map((student) => (
-                  <View key={student.id} style={styles.rosterRow}>
-                    <View style={styles.rosterIdentity}>
-                      <Text style={styles.cardTitle}>{student.studentNameSnapshot}</Text>
-                      <Text style={styles.description}>NIM {student.nimSnapshot}</Text>
-                    </View>
-                    {selectedClass.status === 'active' && (
-                      <SmallButton
-                        label="Keluarkan"
-                        danger
-                        onPress={() =>
-                          requestRemoveStudent(student.studentUid, student.studentNameSnapshot)
-                        }
-                      />
+            </View>
+            <View accessibilityRole="tablist" style={styles.classTabs}>
+              {(['Peserta', 'Sesi'] as const).map((tab) => (
+                <Pressable
+                  key={tab}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: classTab === tab }}
+                  onPress={() => setClassTab(tab)}
+                  style={[styles.classTab, classTab === tab && styles.classTabSelected]}
+                >
+                  <Text
+                    style={[styles.classTabText, classTab === tab && styles.classTabTextSelected]}
+                  >
+                    {tab}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            {classTab === 'Peserta' ? (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <View>
+                    <Text accessibilityRole="header" style={styles.sectionTitle}>
+                      Peserta kelas
+                    </Text>
+                    {rosterState.value.length > 0 && (
+                      <Text style={styles.description}>
+                        {rosterState.value.length} peserta aktif
+                      </Text>
                     )}
                   </View>
-                ))
-              )}
-            </View>
-
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <View>
-                  <Text accessibilityRole="header" style={styles.sectionTitle}>
-                    Jadwal sesi
-                  </Text>
-                  <Text style={styles.description}>
-                    {selectedClass.name} · {selectedClass.timeZone}
-                  </Text>
                 </View>
-              </View>
-              {sessionsState.loading ? (
-                <Loading label="Memuat sesi..." />
-              ) : sessionsState.error ? (
-                <LoadError message={sessionsState.error} retry={sessionsState.retry} />
-              ) : sessionsState.value.length === 0 ? (
-                <EmptyCard title="Belum ada sesi" />
-              ) : (
-                sessionsState.value.map((session) => {
-                  const badge = SessionStatusStyles[session.status];
-                  return (
-                    <View key={session.id} style={styles.sessionCard}>
-                      <View style={styles.resourceTop}>
-                        <Text style={styles.cardTitle}>{session.module}</Text>
-                        <View style={[styles.statusPill, { backgroundColor: badge.bg }]}>
-                          <Text style={[styles.statusPillText, { color: badge.text }]}>
-                            {badge.label}
-                          </Text>
+                {selectedClass.status === 'active' && (
+                  <>
+                    <View style={styles.addStudentRow}>
+                      <TextInput
+                        accessibilityLabel={
+                          searchByName ? 'Cari berdasarkan nama lengkap' : 'Cari berdasarkan NIM'
+                        }
+                        value={searchInput}
+                        onChangeText={(value) => {
+                          setSearchInput(value);
+                          setStudentMatches(null);
+                          setRosterError(null);
+                        }}
+                        placeholder={searchByName ? 'Nama lengkap' : 'NIM praktikan'}
+                        placeholderTextColor={BrandColors.muted}
+                        autoCapitalize={searchByName ? 'words' : 'characters'}
+                        editable={!lookingUpStudent}
+                        maxLength={searchByName ? 100 : 30}
+                        returnKeyType="search"
+                        onSubmitEditing={() => void findStudent()}
+                        style={[styles.input, styles.nimInput]}
+                      />
+                      <Pressable
+                        accessibilityRole="button"
+                        disabled={!searchInput.trim() || lookingUpStudent}
+                        onPress={() => void findStudent()}
+                        style={[
+                          styles.primaryButton,
+                          (!searchInput.trim() || lookingUpStudent) && styles.buttonDisabled,
+                        ]}
+                      >
+                        {lookingUpStudent ? (
+                          <ActivityIndicator color={BrandColors.paper} />
+                        ) : (
+                          <Text style={styles.primaryButtonText}>Cari</Text>
+                        )}
+                      </Pressable>
+                    </View>
+                    <Pressable
+                      accessibilityRole="button"
+                      disabled={lookingUpStudent}
+                      onPress={() => {
+                        setSearchByName(!searchByName);
+                        setSearchInput('');
+                        setRosterError(null);
+                        setStudentMatches(null);
+                      }}
+                    >
+                      <Text style={styles.linkText}>
+                        {searchByName ? 'Cari berdasarkan NIM' : 'Cari berdasarkan nama lengkap'}
+                      </Text>
+                    </Pressable>
+                    {studentMatches?.classId === selectedClass.id &&
+                      studentMatches.students.map((student) => (
+                        <View key={student.studentUid} style={styles.rosterRow}>
+                          <View style={styles.rosterIdentity}>
+                            <Text style={styles.cardTitle}>{student.displayName}</Text>
+                            <Text style={styles.description}>NIM {student.nim}</Text>
+                          </View>
+                          <SmallButton label="Pilih" onPress={() => confirmStudent(student)} />
                         </View>
+                      ))}
+                  </>
+                )}
+                {rosterError ? (
+                  <Text accessibilityRole="alert" style={styles.errorText}>
+                    {rosterError}
+                  </Text>
+                ) : null}
+                {rosterState.loading ? (
+                  <Loading label="Memuat peserta..." />
+                ) : rosterState.error ? (
+                  <LoadError message={rosterState.error} retry={rosterState.retry} />
+                ) : rosterState.value.length === 0 ? (
+                  <EmptyCard title="Belum ada peserta" />
+                ) : (
+                  rosterState.value.map((student) => (
+                    <View key={student.id} style={styles.rosterRow}>
+                      <View style={styles.rosterIdentity}>
+                        <Text style={styles.cardTitle}>{student.studentNameSnapshot}</Text>
+                        <Text style={styles.description}>NIM {student.nimSnapshot}</Text>
                       </View>
-                      <Text style={styles.description}>{formatSessionRange(session)}</Text>
-                      <Text style={styles.description}>Ruang {session.room}</Text>
-                      <View style={styles.resourceActions}>
+                      {selectedClass.status === 'active' && (
                         <SmallButton
-                          label="Rekap & detail"
+                          label="Keluarkan"
+                          danger
                           onPress={() =>
-                            router.push({
-                              pathname: '/(app)/asisten/sesi',
-                              params: { classId: session.classId, sessionId: session.id },
-                            })
+                            requestRemoveStudent(student.studentUid, student.studentNameSnapshot)
                           }
                         />
-                        {session.status === 'scheduled' && (
-                          <>
-                            <SmallButton
-                              label="Ubah jadwal"
-                              onPress={() => openSessionForm(selectedClass, session)}
-                            />
-                            <SmallButton
-                              label="Batalkan"
-                              danger
-                              onPress={() => requestCancelSession(session)}
-                            />
-                          </>
-                        )}
-                      </View>
+                      )}
                     </View>
-                  );
-                })
-              )}
-            </View>
+                  ))
+                )}
+              </View>
+            ) : (
+              <View style={styles.section}>
+                <View style={styles.sectionHeader}>
+                  <View>
+                    <Text accessibilityRole="header" style={styles.sectionTitle}>
+                      Jadwal sesi
+                    </Text>
+                    <Text style={styles.description}>{selectedClass.timeZone}</Text>
+                  </View>
+                  {selectedClass.status === 'active' && (
+                    <Pressable
+                      accessibilityRole="button"
+                      onPress={() => openSessionForm(selectedClass)}
+                      style={styles.secondaryButton}
+                    >
+                      <Text style={styles.secondaryButtonText}>Buat sesi</Text>
+                    </Pressable>
+                  )}
+                </View>
+                {sessionsState.loading ? (
+                  <Loading label="Memuat sesi..." />
+                ) : sessionsState.error ? (
+                  <LoadError message={sessionsState.error} retry={sessionsState.retry} />
+                ) : sessionsState.value.length === 0 ? (
+                  <EmptyCard title="Belum ada sesi" />
+                ) : (
+                  sessionsState.value.map((session) => {
+                    const badge = SessionStatusStyles[session.status];
+                    return (
+                      <View key={session.id} style={styles.sessionCard}>
+                        <View style={styles.resourceTop}>
+                          <Text style={styles.cardTitle}>{session.module}</Text>
+                          <View style={[styles.statusPill, { backgroundColor: badge.bg }]}>
+                            <Text style={[styles.statusPillText, { color: badge.text }]}>
+                              {badge.label}
+                            </Text>
+                          </View>
+                        </View>
+                        <Text style={styles.description}>{formatSessionRange(session)}</Text>
+                        <Text style={styles.description}>Ruang {session.room}</Text>
+                        <View style={styles.resourceActions}>
+                          <SmallButton
+                            label="Rekap & detail"
+                            onPress={() => openSession(session)}
+                          />
+                          {session.status === 'closed' && (
+                            <SmallButton
+                              label="Ulasan & AI"
+                              onPress={() => openSession(session, 'ulasan')}
+                            />
+                          )}
+                          {session.status === 'scheduled' && (
+                            <>
+                              <SmallButton
+                                label="Ubah jadwal"
+                                onPress={() => openSessionForm(selectedClass, session)}
+                              />
+                              <SmallButton
+                                label="Batalkan"
+                                danger
+                                onPress={() => requestCancelSession(session)}
+                              />
+                            </>
+                          )}
+                        </View>
+                      </View>
+                    );
+                  })
+                )}
+              </View>
+            )}
           </>
         ) : null}
       </ScrollView>
-
       <Modal
         transparent
         visible={!!dialog}
@@ -719,20 +672,17 @@ export default function AssistantPracticumRoute() {
               ) : isFormDialog ? (
                 <>
                   <Text accessibilityRole="header" style={styles.modalTitle}>
-                    {dialog.kind === 'practicum'
+                    {dialog.kind === 'class'
                       ? dialog.item
-                        ? 'Ubah praktikum'
-                        : 'Praktikum baru'
-                      : dialog.kind === 'class'
-                        ? dialog.item
-                          ? 'Ubah kelas'
-                          : 'Kelas baru'
-                        : dialog.item
-                          ? 'Ubah jadwal sesi'
-                          : 'Sesi baru'}
+                        ? 'Ubah kelas praktikum'
+                        : 'Kelas praktikum baru'
+                      : dialog.item
+                        ? 'Ubah jadwal sesi'
+                        : 'Sesi baru'}
                   </Text>
                   {dialog.kind === 'session' ? (
                     <>
+                      <Text style={styles.description}>{dialog.classInfo.name}</Text>
                       <Field
                         label="Topik / modul"
                         value={draft.moduleTitle}
@@ -792,23 +742,19 @@ export default function AssistantPracticumRoute() {
                   ) : (
                     <>
                       <Field
-                        label={dialog.kind === 'practicum' ? 'Nama praktikum' : 'Nama kelas'}
+                        label="Nama kelas praktikum"
                         value={draft.name}
                         onChangeText={(name) => setDraft((value) => ({ ...value, name }))}
-                        placeholder={
-                          dialog.kind === 'practicum' ? 'Contoh: Fisika Dasar' : 'Contoh: Kelas A'
-                        }
+                        placeholder="Contoh: Basis Data B"
                         maxLength={100}
                       />
-                      {dialog.kind === 'class' && (
-                        <Field
-                          label="Zona waktu"
-                          value={draft.timeZone}
-                          onChangeText={(timeZone) => setDraft((value) => ({ ...value, timeZone }))}
-                          placeholder="Asia/Jakarta"
-                          autoCapitalize="none"
-                        />
-                      )}
+                      <Field
+                        label="Zona waktu"
+                        value={draft.timeZone}
+                        onChangeText={(timeZone) => setDraft((value) => ({ ...value, timeZone }))}
+                        placeholder="Asia/Jakarta"
+                        autoCapitalize="none"
+                      />
                     </>
                   )}
                   {dialogError ? (

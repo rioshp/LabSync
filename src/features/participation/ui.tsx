@@ -28,7 +28,11 @@ export function Page({
     <ScrollView
       style={styles.screen}
       keyboardShouldPersistTaps="handled"
-      contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 24 }]}
+      contentContainerStyle={[
+        styles.content,
+        { paddingBottom: insets.bottom + 24 },
+        detail && { paddingTop: insets.top + 20 },
+      ]}
     >
       {detail && (
         <Pressable

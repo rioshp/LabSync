@@ -28,7 +28,7 @@ export async function changeClass(
       if (
         existing.name === name &&
         existing.timeZone === timeZone &&
-        existing.practicumId === fields.practicumId
+        existing.practicumId === null
       ) {
         return { id: classId };
       }
@@ -38,17 +38,11 @@ export async function changeClass(
     if (archiving && existing?.status === 'archived') return { archived: true };
     if (existing && existing.status !== 'active') throw new Error('Kelas sudah diarsipkan.');
 
-    const practicumId = readId(existing?.practicumId ?? fields.practicumId, 'Praktikum');
-    const practicumRef = doc(db, 'practicums', practicumId);
-    const practicum = (await transaction.get(practicumRef)).data();
-    if (!practicum || practicum.status !== 'active') throw new Error('Praktikum tidak aktif.');
-
     const timestamp = serverTimestamp();
     if (creating) {
-      if (practicum.totalClassCount >= 100) throw new Error('Batas 100 kelas sudah tercapai.');
       transaction.set(ref, {
-        practicumId,
-        practicumName: practicum.name,
+        practicumId: null,
+        practicumName: name,
         assistantUid: uid,
         name,
         timeZone,
@@ -58,27 +52,34 @@ export async function changeClass(
         archivedAt: null,
         unfinishedSessionCount: 0,
       });
-      transaction.update(practicumRef, {
-        activeClassCount: practicum.activeClassCount + 1,
-        totalClassCount: practicum.totalClassCount + 1,
-        lastClassChangeId: classId,
-        updatedAt: timestamp,
-      });
       return { id: classId };
     }
+    // Kelas lama masih terikat ke penghitung kelas di dokumen induknya.
+    const practicumId = existing?.practicumId;
+    const practicumRef = practicumId ? doc(db, 'practicums', practicumId) : null;
+    const practicum = practicumRef ? (await transaction.get(practicumRef)).data() : null;
+    if (practicumRef && practicum?.status !== 'active') throw new Error('Praktikum tidak aktif.');
+
     if (archiving) {
       if (existing?.unfinishedSessionCount !== 0) {
         throw new Error('Selesaikan atau batalkan semua sesi sebelum mengarsipkan kelas.');
       }
       transaction.update(ref, { status: 'archived', archivedAt: timestamp, updatedAt: timestamp });
-      transaction.update(practicumRef, {
-        activeClassCount: practicum.activeClassCount - 1,
-        lastClassChangeId: classId,
-        updatedAt: timestamp,
-      });
+      if (practicumRef && practicum) {
+        transaction.update(practicumRef, {
+          activeClassCount: practicum.activeClassCount - 1,
+          lastClassChangeId: classId,
+          updatedAt: timestamp,
+        });
+      }
       return { archived: true };
     }
-    transaction.update(ref, { name, timeZone, updatedAt: timestamp });
+    transaction.update(ref, {
+      name,
+      timeZone,
+      ...(practicumId ? {} : { practicumName: name }),
+      updatedAt: timestamp,
+    });
     return { updated: true };
   });
 }

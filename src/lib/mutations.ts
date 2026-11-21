@@ -1,18 +1,15 @@
 import { randomUUID } from 'expo-crypto';
 
 import { changeClass } from './classes';
+import { firebaseErrorCode } from './firebase-error';
 import { decidePermit, recordParticipation } from './participation';
-import { changePracticum, createPracticum } from './practicums';
 import { getReviewAccess, submitReview } from './reviews';
-import { changeEnrollment, lookupStudent } from './roster';
+import { changeEnrollment, lookupStudent, lookupStudentsByName } from './roster';
 import { changeSession } from './sessions';
 
 type Fields = Record<string, unknown>;
 
 const actions = {
-  createPracticum,
-  updatePracticum: (fields: Fields) => changePracticum('updatePracticum', fields),
-  archivePracticum: (fields: Fields) => changePracticum('archivePracticum', fields),
   createClass: (fields: Fields) => changeClass('createClass', fields),
   updateClass: (fields: Fields) => changeClass('updateClass', fields),
   archiveClass: (fields: Fields) => changeClass('archiveClass', fields),
@@ -22,6 +19,7 @@ const actions = {
   closeSession: (fields: Fields) => changeSession('closeSession', fields),
   cancelSession: (fields: Fields) => changeSession('cancelSession', fields),
   lookupStudent,
+  lookupStudentsByName,
   addStudent: (fields: Fields) => changeEnrollment('addStudent', fields),
   removeStudent: (fields: Fields) => changeEnrollment('removeStudent', fields),
   checkIn: (fields: Fields) => recordParticipation('checkIn', fields),
@@ -43,11 +41,8 @@ export async function mutate<T = unknown>(
 }
 
 export function mutationError(error: unknown) {
-  const code =
-    error && typeof error === 'object' && 'code' in error
-      ? String(error.code).split('/').pop()
-      : '';
-  if (['unavailable', 'deadline-exceeded', 'network-request-failed'].includes(code ?? '')) {
+  const code = firebaseErrorCode(error);
+  if (['unavailable', 'deadline-exceeded', 'network-request-failed'].includes(code)) {
     return 'Server belum dapat dihubungi. Periksa koneksi lalu coba lagi.';
   }
   if (code === 'unauthenticated') return 'Sesi akun tidak tersedia. Silakan masuk lagi.';
@@ -59,7 +54,7 @@ export function mutationError(error: unknown) {
       'failed-precondition',
       'not-found',
       'resource-exhausted',
-    ].includes(code ?? '') &&
+    ].includes(code) &&
     error instanceof Error
   )
     return error.message;

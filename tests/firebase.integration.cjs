@@ -19,6 +19,7 @@ const {
   getDocFromServer,
   getDocsFromServer,
   getFirestore,
+  limit,
   onSnapshot,
   orderBy,
   query,
@@ -36,7 +37,6 @@ let otherAssistant;
 let student;
 let outsider;
 let classId;
-let practicumId;
 let sessionId;
 let permitSessionId;
 
@@ -70,16 +70,10 @@ async function client(label) {
     '../../functions/ai/sentiment': require('../functions/ai/sentiment.js'),
     '../../functions/ai/model-edom.json': require('../functions/ai/model-edom.json'),
   };
+  dependencies['./firebase-error'] = loadTypeScript('src/lib/firebase-error.ts');
   dependencies['./auth'] = loadTypeScript('src/lib/auth.ts', dependencies);
   dependencies['./firestore-input'] = loadTypeScript('src/lib/firestore-input.ts', dependencies);
-  for (const module of [
-    'practicums',
-    'classes',
-    'sessions',
-    'roster',
-    'participation',
-    'reviews',
-  ]) {
+  for (const module of ['classes', 'sessions', 'roster', 'participation', 'reviews']) {
     dependencies['./' + module] = loadTypeScript('src/lib/' + module + '.ts', dependencies);
   }
   const { mutate } = loadTypeScript('src/lib/mutations.ts', {
@@ -185,17 +179,27 @@ test('profile edits move the NIM claim atomically and preserve the last valid pr
 
 test('assistant CRUD and enrollment enable only the correct class listener', async () => {
   const requestId = randomUUID();
-  const input = { name: 'Pemrograman Mobile', requestId };
-  ({ id: practicumId } = await assistant.mutate('createPracticum', input));
-  assert.equal((await assistant.mutate('createPracticum', input)).id, practicumId);
-  ({ id: classId } = await assistant.mutate('createClass', {
-    practicumId,
-    name: 'TI-2A',
-    timeZone: 'Asia/Jakarta',
-    requestId: randomUUID(),
-  }));
+  const input = { name: 'TI-2A', timeZone: 'Asia/Jakarta', requestId };
+  ({ id: classId } = await assistant.mutate('createClass', input));
+  assert.equal((await assistant.mutate('createClass', input)).id, classId);
+  assert.equal(
+    (await getDocFromServer(doc(assistant.db, 'classes', classId))).data().practicumId,
+    null,
+  );
   const candidate = await assistant.mutate('lookupStudent', { classId, nim: '260001' });
   assert.equal(candidate.studentUid, student.uid);
+  assert.deepEqual(
+    await assistant.mutate('lookupStudentsByName', { classId, name: 'Praktikan A' }),
+    [candidate],
+  );
+  await assert.rejects(
+    otherAssistant.mutate('lookupStudentsByName', { classId, name: 'Praktikan A' }),
+    denied,
+  );
+  await assert.rejects(
+    getDocsFromServer(query(collection(assistant.db, 'users'), limit(10))),
+    denied,
+  );
   await assistant.mutate('addStudent', {
     classId,
     nim: candidate.nim,
@@ -340,7 +344,6 @@ test('racing attendance and permit submission cannot record conflicting outcomes
   }
   await assistant.mutate('closeSession', ids);
   await assistant.mutate('archiveClass', { classId });
-  await assistant.mutate('archivePracticum', { practicumId });
   await assert.rejects(
     getDocsFromServer(collection(student.db, 'classes', classId, 'sessions')),
     denied,

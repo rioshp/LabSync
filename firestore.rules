@@ -67,9 +67,9 @@ service cloud.firestore {
       return parts.size() == 2 ? parts[0] : parts[0] + '~' + parts[1];
     }
 
-    function recentStudentLookup(nim) {
+    function recentStudentLookup(field, value) {
       let lookup = get(/databases/$(database)/documents/studentLookups/$(request.auth.uid)).data;
-      return hasRole('asisten') && lookup.nim == nim
+      return hasRole('asisten') && lookup.get(field, '') == value
         && lookup.updatedAt + duration.value(1, 'm') >= request.time
         && classOwner(lookup.classId, true);
     }
@@ -95,8 +95,11 @@ service cloud.firestore {
     match /users/{uid} {
       allow get: if (request.auth != null && request.auth.uid == uid)
         || (resource != null && resource.data.role == 'praktikan'
-          && resource.data.accountStatus == 'active' && recentStudentLookup(resource.data.nim)
+          && resource.data.accountStatus == 'active' && recentStudentLookup('nim', resource.data.nim)
           && get(/databases/$(database)/documents/studentKeys/$(resource.data.nim)).data.studentUid == uid);
+      allow list: if request.query.limit <= 10
+        && resource.data.role == 'praktikan' && resource.data.accountStatus == 'active'
+        && recentStudentLookup('name', resource.data.displayName);
       allow create: if verifiedUser(uid) && validStudentProfile(uid, request.resource.data);
       allow update: if verifiedUser(uid) && resource.data.accountStatus == 'active'
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'nim', 'updatedAt'])
@@ -128,14 +131,16 @@ service cloud.firestore {
       }
       allow create: if validReservation();
       allow delete: if validRelease();
-      allow get: if recentStudentLookup(nim);
+      allow get: if recentStudentLookup('nim', nim);
     }
 
     match /studentLookups/{uid} {
       function validLookup(data) {
         return request.auth.uid == uid
-          && data.keys().hasOnly(['classId', 'nim', 'windowStartedAt', 'count', 'updatedAt'])
-          && classOwner(data.classId, true) && validNim(data.nim)
+          && data.keys().hasOnly(['classId', 'nim', 'name', 'windowStartedAt', 'count', 'updatedAt'])
+          && classOwner(data.classId, true)
+          && (('nim' in data && !('name' in data) && validNim(data.nim))
+            || ('name' in data && !('nim' in data) && validText(data.name, 100)))
           && data.updatedAt == request.time;
       }
       allow get: if ownsAsAssistant(uid);
@@ -204,14 +209,19 @@ service cloud.firestore {
           && after.lastClassChangeId == classId && after.updatedAt == request.time
           && after.activeClassCount == before.activeClassCount + step;
       }
-      function validNewClass(data) {
+      function validLegacyClassParent(data) {
         let parent = get(/databases/$(database)/documents/practicums/$(data.practicumId)).data;
+        return data.practicumName == parent.name && pairedPracticumCount(data.practicumId, 1);
+      }
+      function validNewClass(data) {
         return data.keys().hasOnly(['practicumId', 'practicumName', 'assistantUid', 'name',
           'timeZone', 'status', 'createdAt', 'updatedAt', 'archivedAt', 'unfinishedSessionCount'])
-          && validClassDetails(data) && data.practicumName == parent.name
+          && validClassDetails(data)
           && data.status == 'active' && data.createdAt == request.time
           && data.updatedAt == request.time && data.archivedAt == null
-          && data.unfinishedSessionCount == 0 && pairedPracticumCount(data.practicumId, 1);
+          && data.unfinishedSessionCount == 0
+          && ((data.practicumId == null && data.practicumName == data.name)
+            || (data.practicumId is string && validLegacyClassParent(data)));
       }
       function validSessionCountChange(before, after) {
         let path = /databases/$(database)/documents/classes/$(classId)/sessions/$(after.lastSessionChangeId);
@@ -227,15 +237,20 @@ service cloud.firestore {
       function validClassUpdate(before, after) {
         let changed = after.diff(before).affectedKeys();
         return after.updatedAt == request.time && (
-          (changed.hasOnly(['practicumName', 'updatedAt'])
+          (before.practicumId is string && changed.hasOnly(['practicumName', 'updatedAt'])
             && after.practicumName == getAfter(
               /databases/$(database)/documents/practicums/$(before.practicumId)
             ).data.name)
-          || (before.status == 'active' && changed.hasOnly(['name', 'timeZone', 'updatedAt'])
+          || (before.status == 'active' && before.practicumId == null
+            && changed.hasOnly(['name', 'practicumName', 'timeZone', 'updatedAt'])
+            && validClassDetails(after) && after.practicumName == after.name)
+          || (before.status == 'active' && before.practicumId is string
+            && changed.hasOnly(['name', 'timeZone', 'updatedAt'])
             && validClassDetails(after) && activePracticum(before.practicumId))
           || (before.status == 'active' && changed.hasOnly(['status', 'archivedAt', 'updatedAt'])
             && before.unfinishedSessionCount == 0 && after.status == 'archived'
-            && after.archivedAt == request.time && pairedPracticumCount(before.practicumId, -1))
+            && after.archivedAt == request.time
+            && (before.practicumId == null || pairedPracticumCount(before.practicumId, -1)))
           || (changed.hasOnly(['unfinishedSessionCount', 'lastSessionChangeId', 'updatedAt'])
             && validSessionCountChange(before, after))
         );

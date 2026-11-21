@@ -142,16 +142,6 @@ export const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 21,
   },
-  offlineNotice: {
-    color: '#765713',
-    fontSize: 12,
-    lineHeight: 18,
-    backgroundColor: '#FFF3DB',
-    borderWidth: 1,
-    borderColor: '#F2D89A',
-    borderRadius: 10,
-    padding: 10,
-  },
   identityCard: {
     padding: 18,
     gap: 6,

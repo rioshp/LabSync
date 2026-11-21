@@ -1,13 +1,22 @@
-import { useCallback, useEffect, useState } from 'react';
+import {
+  createContext,
+  createElement,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from 'react';
 
 import { mutationError } from '@/lib/mutations';
+import type { Role } from '@/types/user';
 
 import {
   subscribeAssistantClasses,
-  subscribeAssistantPracticums,
   subscribeAssistantSession,
   subscribeClassRoster,
   subscribeClassSessions,
+  subscribeSchedule,
   subscribeSessionAttendance,
   subscribeSessionReviewSummary,
 } from './listeners';
@@ -16,12 +25,11 @@ import type {
   AcademicSession,
   AttendanceRecord,
   Enrollment,
-  Practicum,
   ReviewSummary,
 } from './types';
 
 type Subscribe<T> = (
-  onChange: (value: T, offline?: boolean) => void,
+  onChange: (value: T, loading?: boolean) => void,
   onError: (error: unknown) => void,
 ) => () => void;
 type LiveState<T> = {
@@ -29,7 +37,6 @@ type LiveState<T> = {
   value: T;
   loading: boolean;
   error: string | null;
-  offline: boolean;
 };
 
 function useLive<T>(key: string, subscribe: Subscribe<T>, emptyValue: T) {
@@ -39,32 +46,29 @@ function useLive<T>(key: string, subscribe: Subscribe<T>, emptyValue: T) {
     value: emptyValue,
     loading: true,
     error: null,
-    offline: false,
   });
 
   useEffect(() => {
     if (!key) return;
     return subscribe(
-      (value, offline = false) => setState({ key, value, loading: false, error: null, offline }),
+      (value, loading = false) => setState({ key, value, loading, error: null }),
       (error) => {
         setState({
           key,
           value: emptyValue,
           loading: false,
           error: mutationError(error),
-          offline: false,
         });
       },
     );
   }, [key, subscribe, attempt, emptyValue]);
 
   const retry = useCallback(() => {
-    setState({ key, value: emptyValue, loading: true, error: null, offline: false });
+    setState({ key, value: emptyValue, loading: true, error: null });
     setAttempt((value) => value + 1);
   }, [key, emptyValue]);
 
-  if (state.key !== key || !key)
-    return { value: emptyValue, loading: !!key, error: null, offline: false, retry };
+  if (state.key !== key || !key) return { value: emptyValue, loading: !!key, error: null, retry };
   return { ...state, retry };
 }
 
@@ -79,25 +83,41 @@ const EMPTY_SUMMARY: ReviewSummary = {
   pendingCount: 0,
 };
 
-export function useAssistantPracticums(uid: string | undefined) {
-  const key = uid ?? '';
-  const subscribe = useCallback<Subscribe<Practicum[]>>(
-    (onChange, onError) => (key ? subscribeAssistantPracticums(key, onChange, onError) : () => {}),
-    [key],
+const AssistantClassesContext = createContext<ReturnType<typeof useOwnedClasses> | null>(null);
+
+export function useSchedule(uid: string | undefined, role: Role | null) {
+  const subscribe = useCallback<Subscribe<AcademicSession[]>>(
+    (onChange, onError) =>
+      uid && role
+        ? subscribeSchedule(
+            uid,
+            role,
+            ({ sessions, loading }) => onChange(sessions, loading),
+            onError,
+          )
+        : () => {},
+    [uid, role],
   );
-  return useLive(key, subscribe, EMPTY_ARRAY as Practicum[]);
+  return useLive(uid && role ? `${uid}:${role}` : '', subscribe, EMPTY_ARRAY);
 }
 
-export function useAssistantClasses(uid: string | undefined, practicumId: string | null) {
-  const key = uid && practicumId ? `${uid}:${practicumId}` : '';
+function useOwnedClasses(uid: string | undefined) {
   const subscribe = useCallback<Subscribe<AcademicClass[]>>(
-    (onChange, onError) =>
-      uid && practicumId
-        ? subscribeAssistantClasses(uid, practicumId, onChange, onError)
-        : () => {},
-    [uid, practicumId],
+    (onChange, onError) => (uid ? subscribeAssistantClasses(uid, onChange, onError) : () => {}),
+    [uid],
   );
-  return useLive(key, subscribe, EMPTY_ARRAY as AcademicClass[]);
+  return useLive(uid ?? '', subscribe, EMPTY_ARRAY);
+}
+
+export function AssistantClassesProvider({ uid, children }: { uid?: string; children: ReactNode }) {
+  const classes = useOwnedClasses(uid);
+  return createElement(AssistantClassesContext.Provider, { value: classes }, children);
+}
+
+export function useAssistantClasses() {
+  const classes = useContext(AssistantClassesContext);
+  if (!classes) throw new Error('Daftar kelas belum tersedia.');
+  return classes;
 }
 
 export function useClassRoster(uid: string | undefined, classId: string | null) {
@@ -107,33 +127,37 @@ export function useClassRoster(uid: string | undefined, classId: string | null) 
       uid && classId ? subscribeClassRoster(uid, classId, onChange, onError) : () => {},
     [uid, classId],
   );
-  return useLive(key, subscribe, EMPTY_ARRAY as Enrollment[]);
+  return useLive(key, subscribe, EMPTY_ARRAY);
 }
 
-export function useClassSessions(uid: string | undefined, classId: string | null) {
-  const key = uid && classId ? `${uid}:${classId}` : '';
+export function useClassSessions(classInfo: AcademicClass | null) {
+  const { id, name, timeZone } = classInfo ?? {};
   const subscribe = useCallback<Subscribe<AcademicSession[]>>(
     (onChange, onError) =>
-      uid && classId ? subscribeClassSessions(uid, classId, onChange, onError) : () => {},
-    [uid, classId],
+      id && name && timeZone
+        ? subscribeClassSessions({ id, name, timeZone }, onChange, onError)
+        : () => {},
+    [id, name, timeZone],
   );
-  return useLive(key, subscribe, EMPTY_ARRAY as AcademicSession[]);
+  return useLive(id ?? '', subscribe, EMPTY_ARRAY);
 }
 
-export function useAssistantSession(
-  uid: string | undefined,
-  classId: string | null,
-  sessionId: string | null,
-) {
-  const key = uid && classId && sessionId ? `${uid}:${classId}:${sessionId}` : '';
+export function useAssistantSession(classId: string | null, sessionId: string | null) {
+  const classes = useAssistantClasses();
+  const classInfo = classes.value.find((item) => item.id === classId);
+  const { id, name, timeZone } = classInfo ?? {};
   const subscribe = useCallback<Subscribe<AcademicSession | null>>(
     (onChange, onError) =>
-      uid && classId && sessionId
-        ? subscribeAssistantSession(uid, classId, sessionId, onChange, onError)
+      id && name && timeZone && sessionId
+        ? subscribeAssistantSession({ id, name, timeZone }, sessionId, onChange, onError)
         : () => {},
-    [uid, classId, sessionId],
+    [id, name, timeZone, sessionId],
   );
-  return useLive<AcademicSession | null>(key, subscribe, null);
+  const session = useLive(id && sessionId ? `${id}:${sessionId}` : '', subscribe, null);
+  if (!classInfo && (classes.loading || classes.error)) {
+    return { ...session, loading: classes.loading, error: classes.error, retry: classes.retry };
+  }
+  return session;
 }
 
 export function useSessionAttendance(uid: string | undefined, sessionId: string | null) {
@@ -143,7 +167,7 @@ export function useSessionAttendance(uid: string | undefined, sessionId: string 
       uid && sessionId ? subscribeSessionAttendance(uid, sessionId, onChange, onError) : () => {},
     [uid, sessionId],
   );
-  return useLive(key, subscribe, EMPTY_ARRAY as AttendanceRecord[]);
+  return useLive(key, subscribe, EMPTY_ARRAY);
 }
 
 export function useSessionReviewSummary(

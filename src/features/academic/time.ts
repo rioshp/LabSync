@@ -20,6 +20,19 @@ function readZonedParts(date: Date, timeZone: string) {
   };
 }
 
+export function classLocalDateTime(date: Date, timeZone: string) {
+  const { year, month, day, hour, minute } = readZonedParts(date, timeZone);
+  const twoDigits = (value: number) => String(value).padStart(2, '0');
+  return {
+    date: `${String(year).padStart(4, '0')}-${twoDigits(month)}-${twoDigits(day)}`,
+    time: `${twoDigits(hour)}:${twoDigits(minute)}`,
+  };
+}
+
+export function formatDateTime(date: Date, timeZone?: string) {
+  return date.toLocaleString('id-ID', { dateStyle: 'medium', timeStyle: 'short', timeZone });
+}
+
 function matches(
   parts: ReturnType<typeof readZonedParts>,
   expected: { year: number; month: number; day: number; hour: number; minute: number },
@@ -94,4 +107,16 @@ export function formatSessionRange({ date, startTime, endDate, endTime, timeZone
       ? `${date} · ${startTime}–${endTime}`
       : `${date} ${startTime}–${endDate} ${endTime}`;
   return `${range} · ${timeZone}`;
+}
+
+export function groupSchedule(sessions: AcademicSession[], now = Date.now()) {
+  const open = sessions.filter((session) => session.status === 'open');
+  const scheduled = sessions.filter((session) => session.status === 'scheduled');
+  const upcoming = scheduled.filter((session) => session.startsAt.toMillis() >= now);
+  const overdue = scheduled.filter((session) => session.startsAt.toMillis() < now).reverse();
+  const past = sessions
+    .filter((session) => session.status === 'closed' || session.status === 'cancelled')
+    .sort((a, b) => b.startsAt.toMillis() - a.startsAt.toMillis());
+
+  return { open, upcoming, overdue, past };
 }
