@@ -47,6 +47,7 @@ type Dialog =
       title: string;
       message: string;
       label: string;
+      destructive: boolean;
       onConfirm: () => Promise<void>;
     };
 
@@ -88,7 +89,7 @@ export default function AssistantPracticumRoute() {
   const [busy, setBusy] = useState(false);
   const [nimInput, setNimInput] = useState('');
   const [rosterError, setRosterError] = useState<string | null>(null);
-  const [addingStudent, setAddingStudent] = useState(false);
+  const [lookingUpStudent, setLookingUpStudent] = useState(false);
   const formLock = useRef(false);
   const confirmLock = useRef(false);
   const rosterLock = useRef(false);
@@ -130,9 +131,10 @@ export default function AssistantPracticumRoute() {
     message: string,
     label: string,
     onConfirm: () => Promise<void>,
+    destructive = true,
   ) {
     setDialogError(null);
-    setDialog({ kind: 'confirm', title, message, label, onConfirm });
+    setDialog({ kind: 'confirm', title, message, label, onConfirm, destructive });
   }
 
   function requestArchivePracticum(item: Practicum) {
@@ -287,19 +289,41 @@ export default function AssistantPracticumRoute() {
     }
   }
 
-  async function addStudent() {
-    if (!selectedClass || !nimInput.trim() || rosterLock.current) return;
+  async function findStudent() {
+    const nim = nimInput.trim();
+    if (!selectedClass || !nim || rosterLock.current) return;
+
+    const { id: classId, name: className } = selectedClass;
     rosterLock.current = true;
-    setAddingStudent(true);
+    setLookingUpStudent(true);
     setRosterError(null);
     try {
-      await mutate('addStudent', { classId: selectedClass.id, nim: nimInput.trim() });
-      setNimInput('');
+      const candidate = await mutate<{
+        studentUid: string | null;
+        displayName: string | null;
+        nim: string | null;
+      }>('lookupStudent', { classId, nim });
+      const { studentUid, displayName, nim: matchedNim } = candidate;
+      if (!studentUid || !displayName || !matchedNim) {
+        setRosterError('Tidak ada akun praktikan aktif dengan NIM tersebut.');
+        return;
+      }
+
+      askForConfirmation(
+        'Tambah peserta?',
+        `${displayName} (NIM ${matchedNim}) akan ditambahkan ke kelas ${className}.`,
+        'Tambah peserta',
+        async () => {
+          await mutate('addStudent', { classId, nim: matchedNim, studentUid });
+          setNimInput('');
+        },
+        false,
+      );
     } catch (error) {
       setRosterError(mutationError(error));
     } finally {
       rosterLock.current = false;
-      setAddingStudent(false);
+      setLookingUpStudent(false);
     }
   }
 
@@ -518,23 +542,25 @@ export default function AssistantPracticumRoute() {
                     placeholder="Masukkan NIM tepat"
                     placeholderTextColor={BrandColors.muted}
                     autoCapitalize="characters"
-                    returnKeyType="done"
-                    onSubmitEditing={() => void addStudent()}
+                    editable={!lookingUpStudent}
+                    maxLength={30}
+                    returnKeyType="search"
+                    onSubmitEditing={() => void findStudent()}
                     style={[styles.input, styles.nimInput]}
                   />
                   <Pressable
                     accessibilityRole="button"
-                    disabled={!nimInput.trim() || addingStudent}
-                    onPress={() => void addStudent()}
+                    disabled={!nimInput.trim() || lookingUpStudent}
+                    onPress={() => void findStudent()}
                     style={[
                       styles.primaryButton,
-                      (!nimInput.trim() || addingStudent) && styles.buttonDisabled,
+                      (!nimInput.trim() || lookingUpStudent) && styles.buttonDisabled,
                     ]}
                   >
-                    {addingStudent ? (
+                    {lookingUpStudent ? (
                       <ActivityIndicator color={BrandColors.paper} />
                     ) : (
-                      <Text style={styles.primaryButtonText}>Tambah</Text>
+                      <Text style={styles.primaryButtonText}>Cari</Text>
                     )}
                   </Pressable>
                 </View>
@@ -689,7 +715,10 @@ export default function AssistantPracticumRoute() {
                       accessibilityRole="button"
                       disabled={busy}
                       onPress={() => void confirmDialog()}
-                      style={[styles.dangerButton, busy && styles.buttonDisabled]}
+                      style={[
+                        dialog.destructive ? styles.dangerButton : styles.primaryButton,
+                        busy && styles.buttonDisabled,
+                      ]}
                     >
                       {busy ? (
                         <ActivityIndicator color={BrandColors.paper} />

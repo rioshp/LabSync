@@ -14,7 +14,8 @@ All requests have `{ action, ...fields }`. Authenticated users need an active pr
 | `updatePracticum` / `archivePracticum` | `practicumId`, and `name` for update |
 | `createClass` | `practicumId`, `name`, `timeZone`, `requestId` |
 | `updateClass` / `archiveClass` | `classId`, and `name`, `timeZone` for update |
-| `lookupStudent` / `addStudent` | `classId`, `nim` |
+| `lookupStudent` | `classId`, `nim` |
+| `addStudent` | `classId`, `nim`, `studentUid` dari hasil lookup |
 | `removeStudent` | `classId`, `studentUid` |
 | `createSession` | `classId`, `moduleTitle`, `room`, `startsAt`, `endsAt`, `requestId` |
 | `updateSession` | `classId`, `sessionId`, `moduleTitle`, `room`, `startsAt`, `endsAt` |

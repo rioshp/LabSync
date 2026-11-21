@@ -222,7 +222,10 @@ async function makeClassAndSession(env, assistantUid, studentUid) {
     },
     env.auth(assistantUid),
   );
-  await env.call({ action: 'addStudent', classId: c.id, nim: '2026001' }, env.auth(assistantUid));
+  await env.call(
+    { action: 'addStudent', classId: c.id, nim: '2026001', studentUid },
+    env.auth(assistantUid),
+  );
   const s = await env.call(
     {
       action: 'createSession',
@@ -401,4 +404,31 @@ test('student lookup is exact, private, and limited to 20 calls per minute', asy
     env.call({ action: 'lookupStudent', classId: c.id, nim: '2026001' }, env.auth('assistant-a')),
     (err) => err instanceof DomainError && err.code === 'resource-exhausted',
   );
+});
+
+test('enrollment checks that the confirmed UID still belongs to the NIM', async () => {
+  const env = setup();
+  const assistant = env.auth('assistant-a');
+  env.addAssistant('assistant-a');
+  await env.call(
+    { action: 'completeProfile', displayName: 'Dewi Putri', nim: '2026001' },
+    env.auth('student-a'),
+  );
+  const { classId } = await makeClassAndSession(env, 'assistant-a', 'student-a');
+  const candidate = await env.call({ action: 'lookupStudent', classId, nim: '2026001' }, assistant);
+  assert.equal(candidate.studentUid, 'student-a');
+
+  await assert.rejects(
+    env.call(
+      { action: 'addStudent', classId, nim: candidate.nim, studentUid: 'different-uid' },
+      assistant,
+    ),
+    (error) => error instanceof DomainError && error.code === 'failed-precondition',
+  );
+  const retry = await env.call(
+    { action: 'addStudent', classId, nim: candidate.nim, studentUid: candidate.studentUid },
+    assistant,
+  );
+  assert.equal(retry.added, false);
+  assert.equal([...env.db.store.keys()].filter((key) => key.startsWith('enrollments/')).length, 1);
 });

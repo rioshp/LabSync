@@ -400,9 +400,10 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
   }
 
   async function addStudent(input, uid) {
-    assertAllowedKeys(input, ['action', 'classId', 'nim']);
+    assertAllowedKeys(input, ['action', 'classId', 'nim', 'studentUid']);
     const classId = documentId(input.classId, 'classId');
     const nim = normalizeNim(input.nim);
+    const studentUid = documentId(input.studentUid, 'studentUid');
     const keyRef = db.collection('studentKeys').doc(nim);
     return db.runTransaction(async (tx) => {
       await requireAssistant(tx, uid);
@@ -411,8 +412,9 @@ function createDomain({ db, FieldValue, Timestamp, getAuthUser, now = () => Date
       if (!practicumSnap.exists || practicumSnap.data().status !== 'active')
         error('failed-precondition', 'This class practicum is not active.');
       const keySnap = await tx.get(keyRef);
-      if (!keySnap.exists) error('not-found', 'No active student account matches that NIM.');
-      const studentUid = keySnap.data().studentUid;
+      if (!keySnap.exists || keySnap.data().studentUid !== studentUid) {
+        error('failed-precondition', 'Akun untuk NIM ini berubah. Cari peserta kembali.');
+      }
       const userRef = users.doc(studentUid);
       const studentSnap = await tx.get(userRef);
       if (!studentSnap.exists) error('not-found', 'No active student account matches that NIM.');

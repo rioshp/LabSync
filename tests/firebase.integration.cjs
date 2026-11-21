@@ -147,7 +147,13 @@ test('assistant CRUD and enrollment enable only the correct class listener', asy
     timeZone: 'Asia/Jakarta',
     requestId: randomUUID(),
   }));
-  await assistant.mutate('addStudent', { classId, nim: '260001' });
+  const candidate = await assistant.mutate('lookupStudent', { classId, nim: '260001' });
+  assert.equal(candidate.studentUid, student.uid);
+  await assistant.mutate('addStudent', {
+    classId,
+    nim: candidate.nim,
+    studentUid: candidate.studentUid,
+  });
   const base = {
     classId,
     moduleTitle: 'Praktikum 1',
@@ -224,7 +230,7 @@ test('two clients see open, check-in and close; concurrent check-in creates a si
   const summary = (await getDocFromServer(doc(assistant.db, 'reviewSummaries', sessionId))).data();
   assert.equal(summary.totalSubmitted, 1);
   assert.equal(summary.positiveCount, 1);
-  await assistant.mutate('addStudent', { classId, nim: '260001' });
+  await assistant.mutate('addStudent', { classId, nim: '260001', studentUid: student.uid });
 });
 
 test('permits require a human decision, block cancellation while pending, and update student realtime', async () => {
@@ -249,7 +255,7 @@ test('permits require a human decision, block cancellation while pending, and up
 });
 
 test('racing attendance and permit submission cannot record conflicting outcomes', async () => {
-  await assistant.mutate('addStudent', { classId, nim: '260002' });
+  await assistant.mutate('addStudent', { classId, nim: '260002', studentUid: outsider.uid });
   const ids = { classId, sessionId: permitSessionId };
   const outcome = await Promise.allSettled([
     outsider.mutate('checkIn', ids),
