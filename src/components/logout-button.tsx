@@ -1,10 +1,11 @@
+import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet } from 'react-native';
 
 import { BrandColors } from '@/constants/theme';
 import { getAuthErrorMessage, logout } from '@/lib/auth';
 
-export function LogoutButton() {
+export function LogoutButton({ inverted = false }: { inverted?: boolean }) {
   const [busy, setBusy] = useState(false);
 
   async function submit() {
@@ -26,14 +27,24 @@ export function LogoutButton() {
       accessibilityState={{ disabled: busy, busy }}
       disabled={busy}
       onPress={submit}
-      style={({ pressed }) => [styles.button, pressed && styles.pressed]}
+      style={({ pressed }) => [
+        styles.button,
+        inverted && styles.buttonInverted,
+        pressed && styles.pressed,
+      ]}
     >
       {busy ? (
-        <ActivityIndicator color={BrandColors.forest} />
+        <ActivityIndicator size="small" color={inverted ? BrandColors.paper : BrandColors.ink} />
       ) : (
-        <Text accessible={false} style={styles.icon}>
-          ↪
-        </Text>
+        <SymbolView
+          name={{
+            ios: 'rectangle.portrait.and.arrow.right',
+            android: 'logout',
+            web: 'logout',
+          }}
+          tintColor={inverted ? BrandColors.paper : BrandColors.ink}
+          size={17}
+        />
       )}
     </Pressable>
   );
@@ -41,12 +52,20 @@ export function LogoutButton() {
 
 const styles = StyleSheet.create({
   button: {
-    minWidth: 48,
-    minHeight: 44,
-    marginRight: 8,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    marginRight: 14,
+    backgroundColor: BrandColors.paper,
+    borderWidth: 1,
+    borderColor: BrandColors.line,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  icon: { fontSize: 28, color: BrandColors.forest, fontWeight: '700' },
-  pressed: { opacity: 0.75 },
+  buttonInverted: {
+    marginRight: 0,
+    backgroundColor: 'rgba(255, 255, 255, 0.14)',
+    borderColor: 'rgba(255, 255, 255, 0.22)',
+  },
+  pressed: { opacity: 0.72 },
 });
