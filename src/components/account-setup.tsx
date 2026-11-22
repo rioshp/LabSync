@@ -1,8 +1,10 @@
 import { sendEmailVerification } from '@react-native-firebase/auth';
+import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
-import { Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 
 import { AuthButton, AuthError, AuthField, AuthScreen, authStyles } from '@/components/auth-screen';
+import { BrandColors } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
 import { getAuthErrorMessage, logout, refreshVerification } from '@/lib/auth';
 import { mutationError } from '@/lib/mutations';
@@ -42,14 +44,27 @@ export function AccountSetup() {
     ? 'Hubungi pengelola LabSync untuk memeriksa akses akun ini.'
     : verifying
       ? 'Buka tautan verifikasi di email, lalu kembali ke LabSync.'
-      : 'Isi nama dan NIM untuk mengaktifkan akun praktikan.';
+      : 'Isi nama lengkap dan NIM untuk mengaktifkan akun praktikan.';
 
   return (
-    <AuthScreen title={title} description={description}>
+    <AuthScreen
+      header="clean"
+      stepLabel={disabled ? undefined : verifying ? '01 / 02' : '02 / 02'}
+      dangerBadge={disabled}
+      title={title}
+      description={description}
+    >
       <View style={authStyles.form}>
-        {verifying && (
+        {verifying ? (
           <>
-            <Text style={authStyles.label}>{user.email}</Text>
+            <View style={styles.emailPill}>
+              <SymbolView
+                name={{ ios: 'envelope', android: 'mail_outline', web: 'mail_outline' }}
+                size={16}
+                tintColor={BrandColors.ink}
+              />
+              <Text style={styles.emailText}>{user.email}</Text>
+            </View>
             <AuthButton
               title="Saya sudah verifikasi"
               busy={busy === 'verify'}
@@ -65,6 +80,7 @@ export function AccountSetup() {
             />
             <AuthButton
               title="Kirim ulang tautan"
+              variant="outline"
               busy={busy === 'email'}
               disabled={!!busy}
               onPress={() =>
@@ -75,21 +91,25 @@ export function AccountSetup() {
               }
             />
           </>
-        )}
-        {!verifying && !disabled && (
+        ) : null}
+        {!verifying && !disabled ? (
           <>
             <AuthField
               label="Nama lengkap"
+              icon="user"
               value={name}
               onChangeText={setName}
+              placeholder="Contoh: Budi Santoso"
               maxLength={100}
               autoComplete="name"
               editable={!busy}
             />
             <AuthField
               label="NIM"
+              icon="id"
               value={nim}
               onChangeText={setNim}
+              placeholder="Contoh: 23051204008"
               maxLength={30}
               autoCapitalize="characters"
               autoCorrect={false}
@@ -107,15 +127,18 @@ export function AccountSetup() {
               }
             />
           </>
-        )}
+        ) : null}
         {notice ? (
-          <Text accessibilityLiveRegion="polite" style={authStyles.label}>
-            {notice}
-          </Text>
+          <View style={styles.noticeBox}>
+            <Text accessibilityLiveRegion="polite" style={styles.noticeText}>
+              {notice}
+            </Text>
+          </View>
         ) : null}
         <AuthError message={error} />
         <AuthButton
           title="Keluar"
+          variant={disabled ? 'danger' : 'soft'}
           disabled={!!busy}
           busy={busy === 'logout'}
           onPress={() => run('logout', logout)}
@@ -124,3 +147,34 @@ export function AccountSetup() {
     </AuthScreen>
   );
 }
+
+const styles = StyleSheet.create({
+  emailPill: {
+    backgroundColor: BrandColors.pageBackground,
+    borderWidth: 1,
+    borderColor: BrandColors.line,
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+  emailText: {
+    color: BrandColors.ink,
+    fontSize: 13.5,
+    fontWeight: '700',
+    flex: 1,
+  },
+  noticeBox: {
+    backgroundColor: BrandColors.soft,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  noticeText: {
+    color: BrandColors.ink,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+});

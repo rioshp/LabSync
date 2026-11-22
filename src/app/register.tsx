@@ -1,8 +1,9 @@
-import { Link, Redirect } from 'expo-router';
+import { Redirect, router } from 'expo-router';
 import { useState } from 'react';
-import { View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AuthButton, AuthError, AuthField, AuthScreen, authStyles } from '@/components/auth-screen';
+import { BrandColors } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
 import { getAuthErrorMessage, register } from '@/lib/auth';
 
@@ -30,12 +31,32 @@ export default function RegisterScreen() {
   if (!busy && user) return <Redirect href="/" />;
 
   return (
-    <AuthScreen title="Buat akun." description="Daftar untuk mengakses kegiatan praktikum.">
+    <AuthScreen
+      header="wave"
+      title="Buat akun baru."
+      description="Gunakan email aktif untuk verifikasi praktikum."
+    >
+      <View style={styles.segmentWrap} accessibilityRole="tablist">
+        <Pressable
+          accessibilityRole="tab"
+          disabled={busy}
+          onPress={() => router.replace('/')}
+          style={styles.segmentItem}
+        >
+          <Text style={styles.segmentIdleText}>Masuk</Text>
+        </Pressable>
+        <View style={[styles.segmentItem, styles.segmentActive]}>
+          <Text style={styles.segmentActiveText}>Daftar</Text>
+        </View>
+      </View>
+
       <View style={authStyles.form}>
         <AuthField
           label="Email"
+          icon="mail"
           value={email}
           onChangeText={setEmail}
+          placeholder="mahasiswa@kampus.ac.id"
           keyboardType="email-address"
           autoCapitalize="none"
           autoCorrect={false}
@@ -44,9 +65,11 @@ export default function RegisterScreen() {
         />
         <AuthField
           label="Password"
+          icon="lock"
           value={password}
           onChangeText={setPassword}
-          secureTextEntry
+          placeholder="Minimal 6 karakter"
+          passwordToggle
           autoCapitalize="none"
           autoCorrect={false}
           autoComplete="new-password"
@@ -54,9 +77,11 @@ export default function RegisterScreen() {
         />
         <AuthField
           label="Konfirmasi password"
+          icon="lock"
           value={confirmPassword}
           onChangeText={setConfirmPassword}
-          secureTextEntry
+          placeholder="Ulangi password"
+          passwordToggle
           autoCapitalize="none"
           autoCorrect={false}
           autoComplete="new-password"
@@ -67,11 +92,35 @@ export default function RegisterScreen() {
         <AuthError message={error} />
         <AuthButton title="Daftar" onPress={submit} busy={busy} />
       </View>
-      {!busy && (
-        <Link href="/" style={authStyles.link}>
-          Sudah punya akun? Masuk
-        </Link>
-      )}
     </AuthScreen>
   );
 }
+
+const styles = StyleSheet.create({
+  segmentWrap: {
+    flexDirection: 'row',
+    backgroundColor: BrandColors.soft,
+    borderRadius: 999,
+    padding: 4,
+  },
+  segmentItem: {
+    flex: 1,
+    minHeight: 38,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentActive: {
+    backgroundColor: BrandColors.ink,
+  },
+  segmentActiveText: {
+    color: BrandColors.paper,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  segmentIdleText: {
+    color: BrandColors.muted,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+});
