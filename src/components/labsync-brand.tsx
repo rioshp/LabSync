@@ -36,14 +36,14 @@ export function LabSyncLockup({ size = 28, inverted = false }: { size?: number; 
   );
 }
 
-/** Motif Halftone Dot Matrix untuk sudut kanan kartu hero gelap Jadwal. */
+/** Motif Halftone Dot Matrix untuk sisi kanan kartu hero gelap Jadwal (~44% lebar kartu). */
 export function DotMatrixOverlay({ light = false }: { light?: boolean }) {
   const color = light ? 'rgba(24, 24, 27, 0.14)' : 'rgba(255, 255, 255, 0.22)';
   return (
     <View pointerEvents="none" accessible={false} style={styles.dotMatrix}>
-      {[0, 1, 2, 3, 4, 5, 6].map((row) => (
+      {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((row) => (
         <View key={row} style={styles.dotRow}>
-          {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((col) => (
+          {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((col) => (
             <View key={col} style={[styles.dot, { backgroundColor: color }]} />
           ))}
         </View>
@@ -173,19 +173,26 @@ const styles = StyleSheet.create({
   },
   dotMatrix: {
     position: 'absolute',
-    top: 10,
-    right: 10,
-    gap: 7,
-    opacity: 0.8,
+    top: 0,
+    bottom: 0,
+    right: 0,
+    width: '44%',
+    paddingRight: 10,
+    paddingVertical: 8,
+    justifyContent: 'center',
+    alignItems: 'flex-end',
+    gap: 9,
+    overflow: 'hidden',
+    opacity: 0.85,
   },
   dotRow: {
     flexDirection: 'row',
-    gap: 7,
+    gap: 9,
   },
   dot: {
-    width: 3,
-    height: 3,
-    borderRadius: 1.5,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
   },
   hatchWrap: {
     position: 'absolute',

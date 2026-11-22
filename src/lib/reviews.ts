@@ -56,7 +56,8 @@ export async function getReviewAccess(fields: Record<string, unknown>) {
       const session = (
         await getDocFromServer(doc(db, 'classes', classId, 'sessions', sessionId))
       ).data();
-      access[id] = { state: session?.status === 'closed' ? 'ready' : 'waiting', classId };
+      const reviewable = session?.status === 'open' || session?.status === 'closed';
+      access[id] = { state: reviewable ? 'ready' : 'waiting', classId };
     }),
   );
   return access;
@@ -78,8 +79,9 @@ export async function submitReview(fields: Record<string, unknown>) {
 
     const attended = (await tx.get(doc(db, 'attendances', id))).data();
     const session = (await tx.get(doc(db, 'classes', classId, 'sessions', sessionId))).data();
-    if (!attended || attended.classId !== classId || session?.status !== 'closed') {
-      throw new Error('Ulasan tersedia setelah sesi yang kamu hadiri selesai.');
+    const reviewable = session?.status === 'open' || session?.status === 'closed';
+    if (!attended || attended.classId !== classId || !reviewable) {
+      throw new Error('Ulasan tersedia setelah kamu presensi pada sesi yang sudah dibuka.');
     }
 
     const timestamp = serverTimestamp();

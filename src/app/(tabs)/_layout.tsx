@@ -44,7 +44,7 @@ const TAB_LABELS: Record<string, string> = {
   jadwal: 'Jadwal',
   'asisten/praktikum': 'Praktikum',
   'asisten/izin': 'Izin',
-  'praktikan/riwayat': 'Riwayat',
+  'praktikan/kelas': 'Kelas',
   profil: 'Profil',
 };
 
@@ -178,12 +178,12 @@ export default function AppTabs() {
         </Tabs.Protected>
         <Tabs.Protected guard={role === 'praktikan'}>
           <Tabs.Screen
-            name="praktikan/riwayat"
+            name="praktikan/kelas"
             options={{
-              title: 'Riwayat Saya',
-              headerTitle: () => <HeaderTitle title="Riwayat saya" />,
+              title: 'Kelas Saya',
+              headerTitle: () => <HeaderTitle title="Kelas saya" />,
               tabBarIcon: ({ color, size }) => (
-                <TabIcon ios="clock.arrow.circlepath" android="history" color={color} size={size} />
+                <TabIcon ios="square.grid.2x2" android="grid_view" color={color} size={size} />
               ),
             }}
           />

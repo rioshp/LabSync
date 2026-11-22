@@ -460,7 +460,7 @@ service cloud.firestore {
           && reviewId == data.sessionId + '~' + request.auth.uid
           && data.studentUid == request.auth.uid && attendance.studentUid == data.studentUid
           && attendance.classId == data.classId && attendance.assistantUid == data.assistantUid
-          && session.status == 'closed' && session.assistantUid == data.assistantUid
+          && session.status in ['open', 'closed'] && session.assistantUid == data.assistantUid
           && validText(data.text, 1000) && data.text.size() >= 10
           && data.submittedAt == request.time && data.analyzedAt == request.time
           && validText(data.modelVersion, 100)
