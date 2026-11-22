@@ -1,32 +1,52 @@
 import { router } from 'expo-router';
+import { SymbolView } from 'expo-symbols';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AuthButton } from '@/components/auth-screen';
+import { DotMatrixOverlay } from '@/components/labsync-brand';
 import { BrandColors, SessionStatusStyles } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
-import { formatSessionRange, groupSchedule } from '@/features/academic/time';
+import { groupSchedule } from '@/features/academic/time';
 import type { AcademicSession } from '@/features/academic/types';
 import { useSchedule } from '@/features/academic/useAcademic';
 
 import { styles } from './schedule.styles';
+
+type ScheduleFilter = 'open' | 'upcoming' | 'past';
+
+const SCHEDULE_FILTERS: { key: ScheduleFilter; label: string }[] = [
+  { key: 'open', label: 'Terbuka' },
+  { key: 'upcoming', label: 'Mendatang' },
+  { key: 'past', label: 'Selesai' },
+];
+
+function formatStartDate(session: AcademicSession) {
+  try {
+    return session.startsAt.toDate().toLocaleDateString('id-ID', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      timeZone: session.timeZone,
+    });
+  } catch {
+    return session.date;
+  }
+}
 
 export default function ScheduleScreen() {
   const insets = useSafeAreaInsets();
   const { user, profile, role } = useAuth();
   const { value: sessions, loading, error, retry } = useSchedule(user?.uid, role);
   const isAssistant = role === 'asisten';
-  const [showPast, setShowPast] = useState(false);
+  const [filter, setFilter] = useState<ScheduleFilter>('open');
   const { open, upcoming, overdue, past } = groupSchedule(sessions);
-  const groups = showPast
-    ? [{ title: null, sessions: past }]
-    : [
-        { title: 'Sedang berlangsung', sessions: open },
-        { title: 'Mendatang', sessions: upcoming },
-        { title: 'Lewat jadwal', sessions: overdue },
-      ];
-  const visibleCount = showPast ? past.length : open.length + upcoming.length + overdue.length;
+
+  const upcomingSessions = [...upcoming, ...overdue];
+  const filteredSessions =
+    filter === 'open' ? open : filter === 'past' ? past : upcomingSessions;
 
   function openSession(session: AcademicSession) {
     router.push({
@@ -37,77 +57,64 @@ export default function ScheduleScreen() {
 
   return (
     <View style={styles.screen}>
-      <View
-        pointerEvents="none"
-        accessible={false}
-        accessibilityElementsHidden
-        importantForAccessibility="no-hide-descendants"
-        style={styles.background}
-      >
-        <View style={styles.backgroundTop} />
-        <View style={styles.backgroundSide} />
-        <View style={styles.backgroundBottom} />
-        <View style={styles.backgroundCorner} />
-        <View style={styles.backgroundMiddle} />
-        <View style={styles.backgroundTopStep} />
-        <View style={styles.backgroundTopTile} />
-        <View style={styles.backgroundRightTile} />
-        <View style={styles.backgroundBottomStep} />
-        <View style={styles.backgroundBottomTile} />
-      </View>
-
       <ScrollView
         style={styles.scroll}
+        showsVerticalScrollIndicator={false}
         contentContainerStyle={[
           styles.content,
-          { paddingTop: 16, paddingBottom: insets.bottom + 32 },
+          { paddingTop: 8, paddingBottom: insets.bottom + 106 },
         ]}
       >
-        <Text accessibilityRole="header" style={styles.title}>
-          {showPast ? 'Sesi terdahulu' : isAssistant ? 'Jadwal praktikum' : 'Jadwal saya'}
-        </Text>
-        <View style={styles.identityCard}>
-          <Text style={styles.eyebrow}>{isAssistant ? 'ASISTEN' : 'PRAKTIKAN'}</Text>
-          <Text style={styles.identityName}>{profile?.displayName}</Text>
-          {profile?.role === 'praktikan' && (
-            <Text style={styles.description}>NIM {profile.nim}</Text>
-          )}
-          {isAssistant && (
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => router.navigate('/asisten/praktikum')}
-              style={({ pressed }) => [styles.manageLink, pressed && styles.pressed]}
-            >
-              <Text style={styles.manageLinkText}>Kelas praktikum</Text>
-              <Text accessibilityElementsHidden style={styles.manageLinkArrow}>
-                ›
-              </Text>
-            </Pressable>
-          )}
+        <View style={styles.heroCard}>
+          <DotMatrixOverlay />
+          <View style={styles.heroTop}>
+            <Text style={styles.eyebrow}>
+              {isAssistant
+                ? 'ASISTEN PRAKTIKUM'
+                : profile?.role === 'praktikan' && profile.nim
+                  ? `PRAKTIKAN · ${profile.nim}`
+                  : 'PRAKTIKAN'}
+            </Text>
+            <Text style={styles.identityName}>{profile?.displayName}</Text>
+          </View>
+          <View style={styles.summaryRow}>
+            <View style={styles.summaryPill}>
+              <Text style={styles.summaryPillText}>{upcoming.length} Mendatang</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.filterRow} accessibilityRole="tablist">
+          {SCHEDULE_FILTERS.map((item) => {
+            const active = filter === item.key;
+            return (
+              <Pressable
+                key={item.key}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: active }}
+                onPress={() => setFilter(item.key)}
+                style={({ pressed }) => [
+                  styles.filterChip,
+                  active && styles.filterChipActive,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={[styles.filterText, active && styles.filterTextActive]}>
+                  {item.label}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
 
         <View style={styles.section}>
-          {(past.length > 0 || showPast) && (
-            <View style={styles.sectionHeader}>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => setShowPast((value) => !value)}
-                style={({ pressed }) => [styles.manageLink, pressed && styles.pressed]}
-              >
-                <Text style={styles.manageLinkText}>
-                  {showPast ? 'Kembali ke jadwal' : 'Lihat sesi terdahulu'}
-                </Text>
-              </Pressable>
-            </View>
-          )}
-
           {loading ? (
             <View
               style={styles.emptyState}
               accessibilityRole="progressbar"
               accessibilityLabel="Memuat jadwal"
             >
-              <ActivityIndicator color={BrandColors.forest} />
+              <ActivityIndicator color={BrandColors.ink} />
               <Text style={styles.description}>Memuat jadwal…</Text>
             </View>
           ) : error ? (
@@ -117,113 +124,108 @@ export default function ScheduleScreen() {
               </Text>
               <AuthButton title="Coba lagi" onPress={retry} />
             </View>
-          ) : visibleCount === 0 ? (
+          ) : filteredSessions.length === 0 ? (
             <View style={styles.emptyState}>
               <Text accessibilityRole="header" style={styles.cardTitle}>
-                {showPast ? 'Belum ada sesi terdahulu' : 'Belum ada jadwal'}
+                {filter === 'open'
+                  ? 'Belum ada sesi terbuka'
+                  : filter === 'past'
+                    ? 'Belum ada sesi selesai'
+                    : 'Belum ada jadwal mendatang'}
+              </Text>
+              <Text style={styles.description}>
+                {filter === 'open'
+                  ? 'Sesi yang sedang dibuka untuk presensi akan muncul di sini.'
+                  : filter === 'past'
+                    ? 'Sesi yang sudah selesai atau dibatalkan akan muncul di sini.'
+                    : isAssistant
+                      ? 'Buat kelas dan jadwalkan sesi di tab Praktikum.'
+                      : 'Jadwal sesi dari kelas aktif kamu akan muncul di sini.'}
               </Text>
             </View>
           ) : (
-            groups
-              .filter((group) => group.sessions.length > 0)
-              .map((group) => (
-                <View key={group.title ?? 'past'} style={styles.section}>
-                  {group.title && (
-                    <Text accessibilityRole="header" style={styles.sectionTitle}>
-                      {group.title}
-                    </Text>
-                  )}
-                  {group.sessions.map((session) => {
-                    const status = SessionStatusStyles[session.status];
-                    const timeLabel = formatSessionRange(session);
-                    return (
-                      <Pressable
-                        key={session.id}
-                        accessibilityRole="button"
-                        accessibilityHint={
-                          isAssistant
-                            ? 'Membuka halaman kelola sesi'
-                            : 'Membuka detail dan presensi sesi'
-                        }
-                        onPress={() => openSession(session)}
-                        style={({ pressed }) => [styles.sessionCard, pressed && styles.pressed]}
+            filteredSessions.map((session) => {
+              const status = SessionStatusStyles[session.status];
+              const dateLabel = formatStartDate(session);
+              const timeLabel = `${session.startTime} – ${session.endTime}`;
+              return (
+                <View key={session.id} style={styles.sessionCard}>
+                  <View style={styles.sessionHeader}>
+                    <View style={styles.classBadge}>
+                      <Text numberOfLines={1} style={styles.classText}>
+                        {session.className}
+                      </Text>
+                    </View>
+                    <View
+                      style={[
+                        styles.statusBadge,
+                        { backgroundColor: status.bg, borderColor: status.border },
+                      ]}
+                    >
+                      <Text style={[styles.statusText, { color: status.text }]}>
+                        {session.status === 'open' ? `● ${status.label}` : status.label}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.cardTitle}>{session.module}</Text>
+                  <View style={styles.details}>
+                    <View style={styles.detailRow}>
+                      <SymbolView
+                        name={{ ios: 'calendar', android: 'calendar_today', web: 'calendar_today' }}
+                        size={14}
+                        tintColor={BrandColors.muted}
+                      />
+                      <Text
+                        accessibilityLabel={`Tanggal: ${dateLabel}`}
+                        style={styles.detailValue}
                       >
-                        <View
-                          pointerEvents="none"
-                          accessible={false}
-                          accessibilityElementsHidden
-                          importantForAccessibility="no-hide-descendants"
-                          style={styles.brandWatermark}
-                        >
-                          {[0, 1, 2, 3].map((block) => (
-                            <View
-                              key={block}
-                              style={[
-                                styles.brandBlock,
-                                block === 1 && styles.splashBlockLight,
-                                block === 2 && styles.splashBlockSoft,
-                              ]}
-                            />
-                          ))}
-                        </View>
-                        <View style={styles.sessionHeader}>
-                          <View style={styles.classBadge}>
-                            <Text style={styles.classText}>{session.className}</Text>
-                          </View>
-                          <View style={[styles.statusBadge, { backgroundColor: status.bg }]}>
-                            <Text style={[styles.statusText, { color: status.text }]}>
-                              {status.label}
-                            </Text>
-                          </View>
-                        </View>
-                        <View style={styles.sessionHeading}>
-                          <Text style={styles.cardTitle}>{session.module}</Text>
-                        </View>
-                        <View style={styles.details}>
-                          <View style={styles.detailRow}>
-                            <View accessible={false} style={styles.detailIcon}>
-                              <View style={styles.clockIcon}>
-                                <View style={styles.clockMinute} />
-                                <View style={styles.clockHour} />
-                              </View>
-                            </View>
-                            <Text
-                              accessibilityLabel={`Waktu: ${timeLabel}`}
-                              style={styles.detailValue}
-                            >
-                              {timeLabel}
-                            </Text>
-                          </View>
-                          <View style={styles.detailRow}>
-                            <View accessible={false} style={styles.detailIcon}>
-                              <View style={styles.locationIcon}>
-                                <View style={styles.locationDot} />
-                              </View>
-                            </View>
-                            <Text
-                              accessibilityLabel={`Ruangan: ${session.room}`}
-                              style={styles.detailValue}
-                            >
-                              {session.room}
-                            </Text>
-                          </View>
-                        </View>
-                        <View style={styles.cardFooter}>
-                          <Text style={styles.actionText}>
-                            {isAssistant ? 'Kelola sesi' : 'Lihat detail sesi'}
-                          </Text>
-                          <View
-                            accessible={false}
-                            style={[styles.navigationIcon, styles.forwardIcon]}
-                          >
-                            <View style={styles.chevron} />
-                          </View>
-                        </View>
-                      </Pressable>
-                    );
-                  })}
+                        {dateLabel}
+                      </Text>
+                    </View>
+                    <View style={styles.detailRow}>
+                      <SymbolView
+                        name={{ ios: 'clock', android: 'schedule', web: 'schedule' }}
+                        size={14}
+                        tintColor={BrandColors.muted}
+                      />
+                      <Text
+                        accessibilityLabel={`Waktu: ${timeLabel}`}
+                        style={styles.detailValue}
+                      >
+                        {timeLabel}
+                      </Text>
+                    </View>
+                    <View style={styles.detailRow}>
+                      <SymbolView
+                        name={{ ios: 'mappin.and.ellipse', android: 'place', web: 'place' }}
+                        size={14}
+                        tintColor={BrandColors.muted}
+                      />
+                      <Text
+                        accessibilityLabel={`Ruangan: ${session.room}`}
+                        style={styles.detailValue}
+                      >
+                        Ruang {session.room}
+                      </Text>
+                    </View>
+                  </View>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityHint={
+                      isAssistant
+                        ? 'Membuka halaman kelola sesi'
+                        : 'Membuka detail dan presensi sesi'
+                    }
+                    onPress={() => openSession(session)}
+                    style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}
+                  >
+                    <Text style={styles.actionButtonText}>
+                      {isAssistant ? 'Kelola Sesi' : 'Lihat detail & Presensi'}
+                    </Text>
+                  </Pressable>
                 </View>
-              ))
+              );
+            })
           )}
         </View>
       </ScrollView>
