@@ -1,9 +1,13 @@
+import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { SymbolView } from 'expo-symbols';
 import { useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AuthButton } from '@/components/auth-screen';
+import { BottomSheetModal, DiagonalHatchOverlay } from '@/components/labsync-brand';
 import { BrandColors, SessionStatusStyles } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
 import { mutationError, mutate } from '@/lib/mutations';
@@ -12,9 +16,26 @@ import {
   useSessionAttendance,
   useSessionReviewSummary,
 } from '@/features/academic/useAcademic';
-import { formatDateTime, formatSessionRange } from '@/features/academic/time';
+import { formatDateTime } from '@/features/academic/time';
+import type { AcademicSession } from '@/features/academic/types';
 
 import { styles } from './assistant-session.styles';
+
+const ARROW_BACK_LIGHT = require('../../../assets/images/arrow-back-light.svg');
+
+function formatStartDate(session: AcademicSession) {
+  try {
+    return session.startsAt.toDate().toLocaleDateString('id-ID', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      timeZone: session.timeZone,
+    });
+  } catch {
+    return session.date;
+  }
+}
 
 export default function AssistantSessionRoute() {
   const params = useLocalSearchParams<{
@@ -72,47 +93,68 @@ export default function AssistantSessionRoute() {
     else router.replace('/asisten/praktikum');
   }
 
+  const totalReviews = summaryState.value.totalSubmitted;
+  const positivePct =
+    totalReviews > 0 ? Math.round((summaryState.value.positiveCount / totalReviews) * 100) : 0;
+  const pillHeight = (count: number) =>
+    totalReviews > 0 ? Math.max(42, Math.round((count / totalReviews) * 100)) : 42;
+
   return (
     <View style={styles.screen}>
+      <StatusBar style="light" />
       <ScrollView
-        contentContainerStyle={[
-          styles.content,
-          { paddingTop: insets.top + 14, paddingBottom: insets.bottom + 32 },
-        ]}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 32 }]}
       >
-        <Pressable accessibilityRole="button" onPress={goBack} style={styles.backButton}>
-          <Text style={styles.backText}>‹ Kembali</Text>
-        </Pressable>
-        <Text accessibilityRole="header" style={styles.title}>
-          Detail sesi
-        </Text>
-        {sessionState.loading ? (
-          <Loading label="Memuat detail sesi..." />
-        ) : sessionState.error ? (
-          <LoadError message={sessionState.error} retry={sessionState.retry} />
-        ) : !session ? (
-          <View style={styles.emptyCard}>
-            <Text style={styles.cardTitle}>Sesi tidak ditemukan</Text>
-            <Text style={styles.description}>Kembali dan pilih sesi yang masih tersedia.</Text>
-          </View>
-        ) : (
-          <>
-            <View style={styles.identityCard}>
-              <View style={styles.sessionHeader}>
-                <View style={styles.classBadge}>
-                  <Text style={styles.classBadgeText}>{session.className}</Text>
-                </View>
-                {statusBadge && (
-                  <View style={[styles.statusBadge, { backgroundColor: statusBadge.bg }]}>
-                    <Text style={[styles.statusText, { color: statusBadge.text }]}>
-                      {statusBadge.label}
-                    </Text>
-                  </View>
-                )}
+        <View style={[styles.darkBand, { paddingTop: insets.top + 12 }]}>
+          <View style={styles.darkBandTop}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Kembali"
+              onPress={goBack}
+              style={({ pressed }) => [styles.backCircle, pressed && styles.pressed]}
+            >
+              <Image
+                source={ARROW_BACK_LIGHT}
+                contentFit="contain"
+                accessible={false}
+                style={styles.backIcon}
+              />
+            </Pressable>
+            {statusBadge ? (
+              <View
+                style={[
+                  styles.statusBadge,
+                  session?.status === 'open'
+                    ? styles.statusBadgeOpen
+                    : { backgroundColor: statusBadge.bg, borderColor: statusBadge.border },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.statusText,
+                    { color: session?.status === 'open' ? BrandColors.ink : statusBadge.text },
+                  ]}
+                >
+                  {session?.status === 'open' ? `● ${statusBadge.label}` : statusBadge.label}
+                </Text>
               </View>
-              <Text style={styles.sessionTitle}>{session.module}</Text>
-              <Text style={styles.description}>{formatSessionRange(session)}</Text>
-              <Text style={styles.description}>Ruang {session.room}</Text>
+            ) : null}
+          </View>
+
+          {session ? (
+            <>
+              <View style={styles.headerInfo}>
+                <Text style={styles.eyebrow}>
+                  {session.className.toUpperCase()} · RUANG {session.room.toUpperCase()}
+                </Text>
+                <Text accessibilityRole="header" style={styles.sessionTitle}>
+                  {session.module}
+                </Text>
+                <Text style={styles.darkSub}>
+                  {formatStartDate(session)} · {session.startTime} – {session.endTime}
+                </Text>
+              </View>
               {actionError ? (
                 <Text accessibilityRole="alert" style={styles.errorText}>
                   {actionError}
@@ -126,9 +168,9 @@ export default function AssistantSessionRoute() {
                       setActionError(null);
                       setConfirmStatus('open');
                     }}
-                    style={styles.primaryButton}
+                    style={({ pressed }) => [styles.openButton, pressed && styles.pressed]}
                   >
-                    <Text style={styles.primaryButtonText}>Buka sesi</Text>
+                    <Text style={styles.openButtonText}>Buka sesi sekarang</Text>
                   </Pressable>
                 </View>
               ) : null}
@@ -140,9 +182,18 @@ export default function AssistantSessionRoute() {
                       setActionError(null);
                       setConfirmStatus('close');
                     }}
-                    style={styles.closeButton}
+                    style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
                   >
-                    <Text style={styles.closeButtonText}>Tutup sesi</Text>
+                    <SymbolView
+                      name={{
+                        ios: 'exclamationmark.triangle',
+                        android: 'warning_amber',
+                        web: 'warning_amber',
+                      }}
+                      size={15}
+                      tintColor={BrandColors.danger}
+                    />
+                    <Text style={styles.closeButtonText}>Tutup sesi sekarang</Text>
                   </Pressable>
                 </View>
               ) : null}
@@ -151,186 +202,219 @@ export default function AssistantSessionRoute() {
                   Sesi ini dibatalkan dan tidak dapat dibuka kembali.
                 </Text>
               ) : null}
-            </View>
+            </>
+          ) : (
+            <Text accessibilityRole="header" style={styles.sessionTitle}>
+              Detail sesi
+            </Text>
+          )}
+        </View>
 
-            {confirmStatus && (
-              <View style={styles.summaryCard}>
-                <Text accessibilityRole="header" style={styles.modalTitle}>
-                  {confirmStatus === 'open' ? 'Buka sesi sekarang?' : 'Tutup sesi sekarang?'}
-                </Text>
-                <Text style={styles.description}>
-                  {confirmStatus === 'open'
-                    ? 'Praktikan aktif di kelas dapat melakukan presensi setelah sesi dibuka.'
-                    : 'Sesi yang sudah selesai tidak dapat dibuka kembali. Rekap presensi dan ulasan tetap tersedia.'}
-                </Text>
-                <View style={styles.modalActions}>
+        <View style={styles.body}>
+          {sessionState.loading ? (
+            <Loading label="Memuat detail sesi..." />
+          ) : sessionState.error ? (
+            <LoadError message={sessionState.error} retry={sessionState.retry} />
+          ) : !session ? (
+            <View style={styles.emptyCard}>
+              <Text style={styles.cardTitle}>Sesi tidak ditemukan</Text>
+              <Text style={styles.description}>Kembali dan pilih sesi yang masih tersedia.</Text>
+            </View>
+          ) : (
+            <>
+              <View accessibilityRole="tablist" style={styles.detailTabs}>
+                {(['Presensi', 'Ulasan & AI'] as const).map((tab) => (
                   <Pressable
-                    accessibilityRole="button"
-                    disabled={submitting}
-                    onPress={() => setConfirmStatus(null)}
-                    style={styles.cancelButton}
+                    key={tab}
+                    accessibilityRole="tab"
+                    accessibilityState={{ selected: section === tab }}
+                    onPress={() => setSection(tab)}
+                    style={[styles.detailTab, section === tab && styles.selectedTab]}
                   >
-                    <Text style={styles.cancelText}>Batal</Text>
+                    <Text style={[styles.tabText, section === tab && styles.selectedTabText]}>
+                      {tab}
+                    </Text>
                   </Pressable>
-                  <Pressable
-                    accessibilityRole="button"
-                    disabled={submitting}
-                    onPress={() => void confirmTransition()}
-                    style={[styles.primaryButton, submitting && styles.disabledButton]}
-                  >
-                    {submitting ? (
-                      <ActivityIndicator color={BrandColors.paper} />
-                    ) : (
-                      <Text style={styles.primaryButtonText}>
-                        {confirmStatus === 'open' ? 'Buka sesi' : 'Tutup sesi'}
-                      </Text>
-                    )}
-                  </Pressable>
-                </View>
+                ))}
               </View>
-            )}
-            <View accessibilityRole="tablist" style={styles.detailTabs}>
-              {(['Presensi', 'Ulasan & AI'] as const).map((tab) => (
-                <Pressable
-                  key={tab}
-                  accessibilityRole="tab"
-                  accessibilityState={{ selected: section === tab }}
-                  onPress={() => setSection(tab)}
-                  style={[styles.detailTab, section === tab && styles.selectedTab]}
-                >
-                  <Text style={[styles.backText, section === tab && styles.selectedTabText]}>
-                    {tab}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
 
-            {!showReviews ? (
-              <View style={styles.summaryCard}>
-                <View style={styles.sectionHeader}>
-                  <Text accessibilityRole="header" style={styles.sectionTitle}>
-                    Rekap presensi
-                  </Text>
-                  {!attendanceState.loading &&
+              {!showReviews ? (
+                <View style={styles.summaryCard}>
+                  <View style={styles.sectionHeader}>
+                    <Text accessibilityRole="header" style={styles.sectionTitle}>
+                      Rekap presensi
+                    </Text>
+                    {!attendanceState.loading &&
                     !attendanceState.error &&
-                    attendanceState.value.length > 0 && (
+                    attendanceState.value.length > 0 ? (
                       <Text style={styles.countBadge}>{attendanceState.value.length} hadir</Text>
-                    )}
-                </View>
-                {attendanceState.loading ? (
-                  <Loading label="Memuat rekap presensi..." />
-                ) : attendanceState.error ? (
-                  <LoadError message={attendanceState.error} retry={attendanceState.retry} />
-                ) : attendanceState.value.length === 0 ? (
-                  <View style={styles.innerEmpty}>
-                    <Text style={styles.cardTitle}>Belum ada praktikan yang presensi</Text>
+                    ) : null}
                   </View>
-                ) : (
-                  attendanceState.value.map((record) => (
-                    <View key={record.id} style={styles.attendanceRow}>
-                      <View style={styles.avatar}>
-                        <Text style={styles.avatarText}>
-                          {record.studentNameSnapshot.trim().charAt(0).toLocaleUpperCase('id-ID')}
+                  {attendanceState.loading ? (
+                    <Loading label="Memuat rekap presensi..." />
+                  ) : attendanceState.error ? (
+                    <LoadError message={attendanceState.error} retry={attendanceState.retry} />
+                  ) : attendanceState.value.length === 0 ? (
+                    <View style={styles.innerEmpty}>
+                      <Text style={styles.cardTitle}>Belum ada praktikan yang presensi</Text>
+                    </View>
+                  ) : (
+                    attendanceState.value.map((record, idx) => (
+                      <View
+                        key={record.id}
+                        style={[styles.attendanceRow, idx > 0 && styles.rowDivider]}
+                      >
+                        <Text style={styles.rowNumber}>{String(idx + 1).padStart(2, '0')}</Text>
+                        <View style={styles.studentInfo}>
+                          <Text style={styles.studentName}>{record.studentNameSnapshot}</Text>
+                          <Text style={styles.description}>NIM {record.nimSnapshot}</Text>
+                        </View>
+                        <Text style={styles.attendanceTime}>
+                          {formatDateTime(record.checkedInAt.toDate(), session.timeZone)}
                         </Text>
                       </View>
-                      <View style={styles.studentInfo}>
-                        <Text style={styles.studentName}>{record.studentNameSnapshot}</Text>
-                        <Text style={styles.description}>NIM {record.nimSnapshot}</Text>
-                      </View>
-                      <Text style={styles.attendanceTime}>
-                        {formatDateTime(record.checkedInAt.toDate(), session.timeZone)}
-                      </Text>
-                    </View>
-                  ))
-                )}
-              </View>
-            ) : (
-              <View style={styles.summaryCard}>
-                <View style={styles.sectionHeader}>
-                  <Text accessibilityRole="header" style={styles.sectionTitle}>
-                    Sentimen ulasan mahasiswa
-                  </Text>
-                  {!summaryState.loading &&
-                    !summaryState.error &&
-                    summaryState.value.totalSubmitted > 0 && (
-                      <Text style={styles.countBadge}>
-                        {summaryState.value.totalSubmitted} ulasan
-                      </Text>
-                    )}
+                    ))
+                  )}
                 </View>
-                {summaryState.loading ? (
-                  <Loading label="Memuat ringkasan…" />
-                ) : summaryState.error ? (
-                  <LoadError message={summaryState.error} retry={summaryState.retry} />
-                ) : summaryState.value.totalSubmitted === 0 ? (
-                  <Text style={styles.emptyHint}>
-                    {session.status === 'closed'
-                      ? 'Belum ada ulasan yang dikirim untuk sesi ini.'
-                      : 'Praktikan yang hadir bisa mengirim ulasan setelah sesi ditutup.'}
-                  </Text>
-                ) : (
-                  <>
-                    <View style={styles.sentimentGrid}>
-                      <SentimentCard
-                        label="Positif"
-                        count={summaryState.value.positiveCount}
-                        color="#24734A"
-                        background="#E8F5EC"
-                      />
-                      <SentimentCard
-                        label="Netral"
-                        count={summaryState.value.neutralCount}
-                        color="#53666B"
-                        background="#EFF3F4"
-                      />
-                      <SentimentCard
-                        label="Negatif"
-                        count={summaryState.value.negativeCount}
-                        color="#A34848"
-                        background="#FCECEC"
-                      />
-                    </View>
-                    {(summaryState.value.pendingCount > 0 ||
-                      summaryState.value.failedCount > 0) && (
-                      <View style={styles.summaryFooter}>
-                        {summaryState.value.pendingCount > 0 && (
-                          <Text style={styles.summaryFootText}>
-                            {summaryState.value.pendingCount} menunggu analisis
-                          </Text>
-                        )}
-                        {summaryState.value.failedCount > 0 && (
-                          <Text style={styles.summaryFootText}>
-                            {summaryState.value.failedCount} gagal dianalisis
-                          </Text>
-                        )}
+              ) : (
+                <View style={styles.summaryCard}>
+                  <View style={styles.sectionHeader}>
+                    <Text accessibilityRole="header" style={styles.sectionTitle}>
+                      Sentimen ulasan mahasiswa
+                    </Text>
+                    {!summaryState.loading && !summaryState.error && totalReviews > 0 ? (
+                      <Text style={styles.countBadge}>{totalReviews} ulasan</Text>
+                    ) : null}
+                  </View>
+                  {summaryState.loading ? (
+                    <Loading label="Memuat ringkasan…" />
+                  ) : summaryState.error ? (
+                    <LoadError message={summaryState.error} retry={summaryState.retry} />
+                  ) : totalReviews === 0 ? (
+                    <Text style={styles.emptyHint}>
+                      {session.status === 'closed'
+                        ? 'Belum ada ulasan yang dikirim untuk sesi ini.'
+                        : 'Praktikan yang hadir bisa mengirim ulasan setelah sesi ditutup.'}
+                    </Text>
+                  ) : (
+                    <>
+                      <View style={styles.pillChartRow}>
+                        <View style={styles.pillTrack}>
+                          <View
+                            style={[
+                              styles.pillFill,
+                              styles.pillFillPos,
+                              { height: `${pillHeight(summaryState.value.positiveCount)}%` },
+                            ]}
+                          >
+                            <Text style={styles.pillCountLight}>
+                              {summaryState.value.positiveCount}
+                            </Text>
+                            <Text style={styles.pillLabelLight}>Positif · {positivePct}%</Text>
+                          </View>
+                        </View>
+                        <View style={styles.pillTrack}>
+                          <View
+                            style={[
+                              styles.pillFill,
+                              styles.pillFillNeu,
+                              { height: `${pillHeight(summaryState.value.neutralCount)}%` },
+                            ]}
+                          >
+                            <Text style={styles.pillCountLight}>
+                              {summaryState.value.neutralCount}
+                            </Text>
+                            <Text style={styles.pillLabelLight}>Netral</Text>
+                          </View>
+                        </View>
+                        <View style={styles.pillTrack}>
+                          <View
+                            style={[
+                              styles.pillFill,
+                              styles.pillFillNeg,
+                              { height: `${pillHeight(summaryState.value.negativeCount)}%` },
+                            ]}
+                          >
+                            <DiagonalHatchOverlay tone="danger" size={140} />
+                            <Text style={styles.pillCountNeg}>
+                              {summaryState.value.negativeCount}
+                            </Text>
+                            <Text style={styles.pillLabelNeg}>Negatif</Text>
+                          </View>
+                        </View>
                       </View>
-                    )}
-                  </>
-                )}
-              </View>
-            )}
-          </>
-        )}
+                      {summaryState.value.pendingCount > 0 ||
+                      summaryState.value.failedCount > 0 ? (
+                        <View style={styles.summaryFooter}>
+                          {summaryState.value.pendingCount > 0 ? (
+                            <Text style={styles.summaryFootText}>
+                              {summaryState.value.pendingCount} menunggu analisis
+                            </Text>
+                          ) : null}
+                          {summaryState.value.failedCount > 0 ? (
+                            <Text style={styles.summaryFootText}>
+                              {summaryState.value.failedCount} gagal dianalisis
+                            </Text>
+                          ) : null}
+                        </View>
+                      ) : null}
+                    </>
+                  )}
+                </View>
+              )}
+            </>
+          )}
+        </View>
       </ScrollView>
-    </View>
-  );
-}
 
-function SentimentCard({
-  label,
-  count,
-  color,
-  background,
-}: {
-  label: string;
-  count: number;
-  color: string;
-  background: string;
-}) {
-  return (
-    <View style={[styles.sentimentCard, { backgroundColor: background }]}>
-      <Text style={[styles.sentimentCount, { color }]}>{count}</Text>
-      <Text style={[styles.sentimentLabel, { color }]}>{label}</Text>
+      <BottomSheetModal
+        visible={!!confirmStatus}
+        title={confirmStatus === 'open' ? 'Buka sesi sekarang?' : 'Tutup sesi sekarang?'}
+        subtitle={session?.module}
+        danger={confirmStatus === 'close'}
+        onClose={() => {
+          if (!submitting) setConfirmStatus(null);
+        }}
+      >
+        <Text style={styles.description}>
+          {confirmStatus === 'open'
+            ? 'Praktikan aktif di kelas dapat melakukan presensi setelah sesi dibuka.'
+            : 'Sesi yang sudah selesai tidak dapat dibuka kembali. Rekap presensi dan ulasan tetap tersedia.'}
+        </Text>
+        <View style={styles.modalActions}>
+          <Pressable
+            accessibilityRole="button"
+            disabled={submitting}
+            onPress={() => setConfirmStatus(null)}
+            style={styles.cancelButton}
+          >
+            <Text style={styles.cancelText}>Batal</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            disabled={submitting}
+            onPress={() => void confirmTransition()}
+            style={[
+              confirmStatus === 'close' ? styles.dangerButton : styles.primaryButton,
+              submitting && styles.disabledButton,
+            ]}
+          >
+            {submitting ? (
+              <ActivityIndicator
+                color={confirmStatus === 'close' ? BrandColors.ink : BrandColors.paper}
+              />
+            ) : (
+              <Text
+                style={
+                  confirmStatus === 'close' ? styles.dangerButtonText : styles.primaryButtonText
+                }
+              >
+                {confirmStatus === 'open' ? 'Buka sesi' : 'Tutup sesi'}
+              </Text>
+            )}
+          </Pressable>
+        </View>
+      </BottomSheetModal>
     </View>
   );
 }
@@ -338,7 +422,7 @@ function SentimentCard({
 function Loading({ label }: { label: string }) {
   return (
     <View style={styles.loading}>
-      <ActivityIndicator color={BrandColors.forest} />
+      <ActivityIndicator color={BrandColors.ink} />
       <Text style={styles.description}>{label}</Text>
     </View>
   );
