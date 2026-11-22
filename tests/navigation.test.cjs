@@ -1,289 +1,397 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
-const test = require('node:test');
-const vm = require('node:vm');
-const ts = require('typescript');
+const { test } = require('node:test');
 const { getRoutes } = require('expo-router/build/getRoutes');
 const { getReactNavigationConfig } = require('expo-router/build/getReactNavigationConfig');
+const {
+  StackActions,
+  StackRouter,
+} = require('expo-router/build/react-navigation/routers/StackRouter');
 const { getStateFromPath } = require('expo-router/build/fork/getStateFromPath');
-const { StackRouter } = require('expo-router/build/react-navigation/routers/StackRouter');
-
-function loadScreen(file, dependencies) {
-  const source = fs.readFileSync(path.join(__dirname, '../src/app', file), 'utf8');
-  const { outputText } = ts.transpileModule(source, {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX },
-  });
-  const module = { exports: {} };
-  vm.runInThisContext(`(function(require, module, exports) { ${outputText}\n})`)(
-    (name) => name === 'react/jsx-runtime' ? require(name) : dependencies[name], module, module.exports,
-  );
-  return module.exports.default;
-}
-
-function declaredScreens(session) {
-  const Stack = Object.assign(() => null, { Screen: 'screen', Protected: 'protected' });
-  const RootLayout = loadScreen('_layout.tsx', {
-    'expo-router': { Stack },
-    '@/hooks/useAuth': { AuthProvider: 'provider', useAuth: () => session },
-  });
-  const navigator = RootLayout().props.children.type();
-  return collectScreens(navigator.props.children, Stack.Screen).map((screen) => screen.props.name);
-}
+const { getNavigationConfig } = require('expo-router/build/getLinkingConfig');
+const { getNavigateAction } = require('expo-router/build/global-state/getNavigationAction');
+const { loadTypeScript } = require('./load-typescript.cjs');
 
 function collectScreens(children, screenType) {
-  return [].concat(children).flatMap((child) => {
-    if (child.type === screenType) return [child];
-    return child.props.guard ? collectScreens(child.props.children, screenType) : [];
-  });
+  return []
+    .concat(children)
+    .filter(Boolean)
+    .flatMap((child) => {
+      if (child.type === screenType) return [child];
+      return child.props.guard ? collectScreens(child.props.children, screenType) : [];
+    });
 }
 
-function renderTabs(role) {
-  const Tabs = Object.assign(() => null, { Screen: 'tab-screen', Protected: 'protected' });
-  const Layout = loadScreen('(app)/_layout.tsx', {
+function elements(node) {
+  if (Array.isArray(node)) return node.flatMap(elements);
+  if (!node || typeof node !== 'object') return [];
+  return [node, ...elements(node.props?.children)];
+}
+
+function rootScreens(session) {
+  const Stack = { Screen: 'screen', Protected: 'protected' };
+  const Root = loadTypeScript('src/app/_layout.tsx', {
+    'expo-router': { Stack },
+    '@/features/academic/useAcademic': { AssistantClassesProvider: 'classes-provider' },
+    '@/hooks/useAuth': { AuthProvider: 'provider', useAuth: () => session },
+  }).default;
+  const navigator = Root().props.children.type();
+  assert.equal(navigator.type, 'classes-provider');
+  assert.equal(
+    navigator.props.uid,
+    session.phase === 'active' && session.role === 'asisten' ? session.user.uid : undefined,
+  );
+  return collectScreens(navigator.props.children.props.children, Stack.Screen).map(
+    (screen) => screen.props.name,
+  );
+}
+
+function tabs(role) {
+  const Tabs = { Screen: 'tab', Protected: 'protected' };
+  const Layout = loadTypeScript('src/app/(tabs)/_layout.tsx', {
     'expo-router': { Tabs },
+    'expo-symbols': { SymbolView: 'symbol' },
     'react-native': { Text: 'text' },
     '@/hooks/useAuth': { useAuth: () => ({ role }) },
     '@/components/logout-button': { LogoutButton: 'logout-button' },
     '@/constants/theme': { BrandColors: {} },
-  });
-  const layout = Layout();
-  return { layout, screens: collectScreens(layout.props.children, Tabs.Screen) };
+  }).default;
+  return collectScreens(Layout().props.children, Tabs.Screen);
 }
 
-test('root always retains its entry route while protecting registration and private screens', () => {
-  for (const session of [
-    { user: null, profile: null, loading: true },
-    { user: null, profile: null, loading: false },
-    { user: { uid: 'student' }, profile: null, loading: false },
-    { user: { uid: 'student' }, profile: { role: 'praktikan' }, loading: true },
-  ]) {
-    assert.deepEqual(declaredScreens(session), ['index', 'register']);
+test('the root stack protects tabs and details by account phase and role', () => {
+  assert.deepEqual(rootScreens({ user: null, phase: 'signed-out' }), ['index', 'register']);
+  const user = { uid: 'account' };
+  for (const phase of ['loading', 'verify', 'onboarding', 'disabled', 'error']) {
+    assert.deepEqual(rootScreens({ user, phase, role: 'asisten' }), ['index']);
   }
-  const screens = declaredScreens({ user: { uid: 'student' }, profile: { role: 'praktikan' }, loading: false });
-  assert.ok(screens.includes('(app)'));
-  assert.ok(screens.includes('index'));
-  assert.ok(!screens.includes('register'));
+  assert.deepEqual(rootScreens({ user, phase: 'active', role: 'asisten' }), [
+    'index',
+    '(tabs)',
+    'asisten/kelas',
+    'asisten/sesi',
+  ]);
+  assert.deepEqual(rootScreens({ user, phase: 'active', role: 'praktikan' }), [
+    'index',
+    '(tabs)',
+    'praktikan/presensi',
+    'praktikan/ajukan-izin',
+    'praktikan/ulasan',
+  ]);
 });
 
-test('entry redirects to the schedule only when account and profile are ready', () => {
-  function render(session) {
-    const Login = loadScreen('index.tsx', {
-      'expo-router': { Link: 'link', Redirect: 'redirect' },
-      react: { useState: (value) => [value, () => {}] },
-      'react-native': { View: 'view' },
-      '@/hooks/useAuth': { useAuth: () => session },
-      '@/lib/auth': {},
-      '@/components/auth-session-status': { AuthSessionStatus: 'auth-status' },
-      '@/components/auth-screen': {
-        AuthScreen: 'auth-screen', AuthField: 'auth-field', AuthButton: 'auth-button',
-        AuthError: 'auth-error', authStyles: {},
-      },
-    });
-    return Login();
-  }
-
-  const ready = render({ user: { uid: 'student' }, profile: { role: 'praktikan' }, loading: false });
-  assert.equal(ready.type, 'redirect');
-  assert.equal(ready.props.href, '/jadwal');
-  for (const session of [
-    { user: null, profile: null, loading: false },
-    { user: { uid: 'student' }, profile: null, loading: false },
-    { user: { uid: 'student' }, profile: { role: 'praktikan' }, loading: true },
-  ]) {
-    assert.notEqual(render(session).type, 'redirect');
-  }
+test('tabs expose the correct screens for each role', () => {
+  assert.deepEqual(
+    tabs('asisten').map((screen) => screen.props.name),
+    ['jadwal', 'asisten/praktikum', 'asisten/izin', 'profil'],
+  );
+  assert.deepEqual(
+    tabs('praktikan').map((screen) => screen.props.name),
+    ['jadwal', 'praktikan/riwayat', 'profil'],
+  );
 });
 
-test('root URL never becomes the generated not-found route after login', () => {
-  const files = fs.readdirSync(path.join(__dirname, '../src/app'), { recursive: true })
-    .filter((file) => file.endsWith('.tsx')).map((file) => `./${file}`);
+test('Expo Router resolves actual screen files without obsolete demo routes', () => {
+  const dir = path.join(__dirname, '../src/app');
+  const files = fs
+    .readdirSync(dir, { recursive: true })
+    .filter((file) => file.endsWith('.tsx'))
+    .map((file) => './' + file);
   const context = () => ({ default: () => null });
   context.keys = () => files;
-  const config = getReactNavigationConfig(getRoutes(context, {
-    platform: 'android', importMode: 'lazy', ignoreEntryPoints: true,
-  }), true);
-  assert.ok('+not-found' in config.screens);
+  const routeNode = getRoutes(context, { platform: 'android', importMode: 'lazy' });
+  const config = getReactNavigationConfig(routeNode, true);
+  function routeChain(url) {
+    const routes = [];
+    let state = getStateFromPath(url, config);
+    while (state?.routes.length) {
+      const route = state.routes.at(-1);
+      routes.push(route);
+      state = route.state;
+    }
+    return routes;
+  }
+  const leaf = (url) => routeChain(url).at(-1)?.name;
+  assert.equal(leaf('/'), 'index');
+  assert.notEqual(leaf('/demo'), 'demo');
+  for (const detail of ['presensi', 'ajukan-izin', 'ulasan']) {
+    const [route] = routeChain(`/praktikan/${detail}?classId=kelas1&sessionId=sesi1`);
+    assert.equal(route.name, 'praktikan/' + detail);
+    assert.deepEqual(route.params, { classId: 'kelas1', sessionId: 'sesi1' });
+  }
+  for (const tab of ['asisten/izin', 'praktikan/riwayat', 'jadwal', 'profil']) {
+    assert.deepEqual(
+      routeChain('/' + tab).map(({ name }) => name),
+      ['(tabs)', tab],
+    );
+  }
+  assert.deepEqual(
+    routeChain('/asisten/praktikum').map(({ name }) => name),
+    ['(tabs)', 'asisten/praktikum'],
+  );
+  const classroom = routeChain('/asisten/kelas?classId=basis-data');
+  assert.deepEqual(
+    classroom.map(({ name }) => name),
+    ['asisten/kelas'],
+  );
+  assert.deepEqual(classroom.at(-1).params, { classId: 'basis-data' });
+  const session = routeChain('/asisten/sesi?classId=basis-data&sessionId=query');
+  assert.deepEqual(
+    session.map(({ name }) => name),
+    ['asisten/sesi'],
+  );
+  assert.deepEqual(session.at(-1).params, { classId: 'basis-data', sessionId: 'query' });
 
-  const declared = new Set(declaredScreens({
-    user: { uid: 'student' }, profile: { role: 'praktikan' }, loading: false,
-  }));
-  const activeConfig = {
-    ...config,
-    screens: Object.fromEntries(Object.entries(config.screens).filter(([name]) =>
-      declared.has(name) || name === '_sitemap' || name === '+not-found')),
+  const tabsRoute = {
+    key: 'app-tabs',
+    name: '(tabs)',
+    state: { index: 1, routes: [{ name: 'jadwal' }, { name: 'asisten/praktikum' }] },
   };
-  assert.equal(getStateFromPath('/', activeConfig).routes[0].name, 'index');
-  const home = getStateFromPath('/home', activeConfig).routes[0];
-  assert.equal(home.name, '(app)');
-  assert.equal(home.state.routes[0].name, 'home');
-  const schedule = getStateFromPath('/jadwal', activeConfig).routes[0];
-  assert.equal(schedule.name, '(app)');
-  assert.equal(schedule.state.routes[0].name, 'jadwal');
-});
+  const stack = {
+    stale: false,
+    type: 'stack',
+    key: 'app-stack',
+    routeKeySeq: 0,
+    index: 0,
+    routeNames: ['index', '(tabs)', 'asisten/kelas', 'asisten/sesi'],
+    routes: [tabsRoute],
+  };
+  const router = StackRouter({ initialRouteName: 'index' });
+  const options = { routeParamList: {}, routeGetIdList: {} };
+  const registry = new Map([
+    [stack.key, { reduce: (state, action) => router.getStateForAction(state, action, options) }],
+  ]);
+  const linking = { config: getNavigationConfig(routeNode, true, {}), getStateFromPath };
+  let currentStack = { ...stack, routes: [{ key: 'login', name: 'index' }] };
 
-test('tabs expose exactly the two planned destinations per role and logout in the header', () => {
-  for (const [role, expected] of [
-    ['asisten', ['jadwal', 'asisten/izin']],
-    ['praktikan', ['jadwal', 'praktikan/riwayat']],
-  ]) {
-    const { layout, screens } = renderTabs(role);
-    assert.deepEqual(screens.filter((screen) => screen.props.options.href !== null)
-      .map((screen) => screen.props.name), expected);
-    assert.equal(layout.props.screenOptions.headerRight().type, 'logout-button');
-    assert.equal(screens.some((screen) => screen.props.name.startsWith(role === 'asisten' ? 'praktikan/' : 'asisten/')), false);
+  function navigate(href, type = 'PUSH') {
+    const navigationState = { index: 0, routes: [{ name: '__root', state: currentStack }] };
+    const { action } = getNavigateAction(
+      href,
+      {},
+      { routeNode, registry, linking, redirects: [] },
+      type,
+      false,
+      undefined,
+      undefined,
+      navigationState,
+    );
+    assert.equal(action.target, stack.key);
+    currentStack = router.getStateForAction(currentStack, action, options).state;
+    return currentStack.routes[currentStack.index];
   }
-});
 
-test('planned detail routes resolve and each role can access only its own entry points', () => {
-  const files = fs.readdirSync(path.join(__dirname, '../src/app'), { recursive: true })
-    .filter((file) => file.endsWith('.tsx')).map((file) => `./${file}`);
-  const context = () => ({ default: () => null });
-  context.keys = () => files;
-  const config = getReactNavigationConfig(getRoutes(context, {
-    platform: 'android', importMode: 'lazy', ignoreEntryPoints: true,
-  }), true);
+  const landing = navigate('/jadwal', 'REPLACE');
+  assert.equal(landing.name, '(tabs)');
+  assert.equal(landing.state.routes[landing.state.index].name, 'jadwal');
+  assert.equal(currentStack.routes.length, 1);
+  currentStack = stack;
 
-  for (const role of ['asisten', 'praktikan']) {
-    const allowed = new Set(renderTabs(role).screens.map((screen) => screen.props.name));
-    const scoped = {
-      ...config, screens: { ...config.screens, '(app)': {
-        ...config.screens['(app)'],
-        screens: Object.fromEntries(Object.entries(config.screens['(app)'].screens)
-          .filter(([name]) => allowed.has(name))),
-      } },
-    };
-    const destination = role === 'asisten' ? '/asisten/sesi' : '/praktikan/presensi';
-    const matched = getStateFromPath(`${destination}?sessionId=session-a`, scoped).routes[0];
-    assert.equal(matched.name, '(app)');
-    assert.equal(matched.state.routes[0].name, destination.slice(1));
-    assert.equal(matched.state.routes[0].params.sessionId, 'session-a');
-    const forbidden = getStateFromPath(role === 'asisten' ? '/praktikan/presensi' : '/asisten/sesi', scoped);
-    assert.notEqual(forbidden?.routes[0].name, '(app)');
-  }
-});
+  assert.deepEqual(
+    navigate('/asisten/sesi?classId=basis-data&sessionId=query').params,
+    session.at(-1).params,
+  );
+  currentStack = router.getStateForAction(currentStack, StackActions.pop(), options).state;
+  assert.deepEqual(currentStack.routes[currentStack.index], tabsRoute);
 
-function renderSchedule(role, schedule) {
-  const calls = [];
-  const retry = () => calls.push('retry');
-  const Screen = loadScreen('(app)/jadwal.tsx', {
-    'expo-router': { router: { push: (value) => calls.push(value) } },
-    'react-native': {
-      View: 'view', Text: 'text', ScrollView: 'scroll', Pressable: 'pressable',
-      ActivityIndicator: 'spinner', StyleSheet: { create: (value) => value, absoluteFill: {} },
+  assert.deepEqual(navigate('/asisten/kelas?classId=basis-data').params, classroom.at(-1).params);
+  const classOpened = currentStack;
+  const review = navigate('/asisten/sesi?classId=basis-data&sessionId=query&section=ulasan');
+  assert.equal(review.name, 'asisten/sesi');
+  assert.deepEqual(review.params, { ...session.at(-1).params, section: 'ulasan' });
+  const returned = router.getStateForAction(currentStack, StackActions.pop(), options).state;
+  assert.deepEqual(returned.routes[returned.index], classOpened.routes[classOpened.index]);
+  const list = router.getStateForAction(returned, StackActions.pop(), options).state;
+  assert.deepEqual(list.routes[list.index], tabsRoute);
+
+  const studentTabs = {
+    ...tabsRoute,
+    state: { index: 0, routes: [{ name: 'jadwal' }, { name: 'praktikan/riwayat' }] },
+  };
+  const student = { user: { uid: 'student' }, phase: 'active', role: 'praktikan' };
+  currentStack = { ...stack, routeNames: rootScreens(student), routes: [studentTabs] };
+  const attendance = navigate('/praktikan/presensi?classId=basis-data&sessionId=query');
+  assert.equal(attendance.name, 'praktikan/presensi');
+  assert.deepEqual(attendance.params, session.at(-1).params);
+  const schedule = router.getStateForAction(currentStack, StackActions.pop(), options).state;
+  assert.deepEqual(schedule.routes[schedule.index], studentTabs);
+
+  const loggedOut = router.getStateForAction(
+    currentStack,
+    {
+      type: 'ROUTE_NAMES_CHANGED',
+      payload: { routeNames: rootScreens({ user: null, phase: 'signed-out' }) },
     },
-    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ bottom: 0 }) },
-    '@/components/auth-screen': { AuthButton: 'auth-button' },
-    '@/hooks/useAuth': { useAuth: () => ({ role, profile: { role, name: 'Pengguna Firebase', nim: '123' } }) },
-    '@/hooks/useSchedule': { useSchedule: () => ({ sessions: [], loading: false, error: null, retry, ...schedule }) },
-    '@/constants/theme': {
-      BrandColors: {}, SessionStatusColors: {
-        BELUM_DIBUKA: { label: 'Belum Dibuka' }, DIBUKA: { label: 'Sedang Dibuka' }, DITUTUP: { label: 'Sesi Ditutup' },
+    options,
+  ).state;
+  assert.deepEqual(
+    loggedOut.routes.map(({ name }) => name),
+    ['index'],
+  );
+
+  assert.equal(leaf('/profil'), 'profil');
+  assert.notEqual(leaf('/asisten-sesi'), 'asisten-sesi');
+});
+
+test('session detail opens the selected tab and loads data only for that tab', () => {
+  let selectedTab;
+  let initialSection;
+  let backed = false;
+  let attendanceSession;
+  let summarySession;
+  const session = {
+    id: 'query',
+    classId: 'basis-data',
+    className: 'Basis Data B',
+    module: 'Kueri SQL',
+    room: 'Lab',
+    timeZone: 'Asia/Jakarta',
+    status: 'closed',
+  };
+  const data = (value) => ({ value, loading: false, error: null });
+  const { default: AssistantSessionRoute } = loadTypeScript(
+    'src/features/academic/assistant-session.tsx',
+    {
+      'expo-router': {
+        router: {
+          canGoBack: () => true,
+          back: () => {
+            backed = true;
+          },
+        },
+        useLocalSearchParams: () => ({
+          classId: 'basis-data',
+          sessionId: 'query',
+          section: initialSection,
+        }),
+      },
+      react: {
+        useRef: (current) => ({ current }),
+        useState: (initial) =>
+          initial
+            ? [
+                selectedTab ?? initial,
+                (next) => {
+                  selectedTab = next;
+                },
+              ]
+            : [initial, () => {}],
+      },
+      'react-native': {
+        View: 'view',
+        Text: 'text',
+        Pressable: 'button',
+        ScrollView: 'scroll',
+        ActivityIndicator: 'indicator',
+      },
+      'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
+      '@/components/auth-screen': { AuthButton: 'auth-button' },
+      '@/constants/theme': {
+        BrandColors: {},
+        SessionStatusStyles: { closed: { label: 'Selesai' } },
+      },
+      '@/hooks/useAuth': { useAuth: () => ({ user: { uid: 'asisten' }, role: 'asisten' }) },
+      '@/lib/mutations': {},
+      '@/features/academic/useAcademic': {
+        useAssistantSession: (classId, sessionId) => {
+          assert.deepEqual([classId, sessionId], ['basis-data', 'query']);
+          return data(session);
+        },
+        useSessionAttendance: (_uid, id) => {
+          attendanceSession = id;
+          return data([]);
+        },
+        useSessionReviewSummary: (_uid, classId, id) => {
+          summarySession = [classId, id];
+          return data({
+            totalSubmitted: 1,
+            positiveCount: 1,
+            neutralCount: 0,
+            negativeCount: 0,
+            pendingCount: 0,
+            failedCount: 0,
+          });
+        },
+      },
+      '@/features/academic/time': {
+        formatSessionRange: () => '09.00–11.00',
+        formatDateTime: () => '09.00',
+      },
+      './assistant-session.styles': { styles: {} },
+    },
+  );
+
+  const tree = () => elements(AssistantSessionRoute());
+  const includesLabel = (nodes, text) => nodes.some((node) => node.props.children === text);
+  const initial = tree();
+  assert.ok(includesLabel(initial, 'Rekap presensi'));
+  assert.ok(!includesLabel(initial, 'Sentimen ulasan mahasiswa'));
+  assert.equal(attendanceSession, 'query');
+  assert.deepEqual(summarySession, [null, null]);
+  initial
+    .find(
+      (node) =>
+        node.props.accessibilityRole === 'tab' &&
+        node.props.children?.props?.children === 'Ulasan & AI',
+    )
+    .props.onPress();
+  assert.ok(includesLabel(tree(), 'Sentimen ulasan mahasiswa'));
+  assert.ok(!includesLabel(tree(), 'Rekap presensi'));
+  assert.equal(attendanceSession, null);
+  assert.deepEqual(summarySession, ['basis-data', 'query']);
+
+  selectedTab = undefined;
+  initialSection = 'ulasan';
+  const reviews = tree();
+  assert.ok(includesLabel(reviews, 'Sentimen ulasan mahasiswa'));
+  reviews.find((node) => node.props.children?.props?.children === '‹ Kembali').props.onPress();
+  assert.equal(backed, true);
+});
+
+test('an enrolled student can check in before attendance or permit documents exist', () => {
+  const time = { toDate: () => new Date(0) };
+  const data = {
+    'classes/kelas-a': { name: 'Basis Data', timeZone: 'Asia/Jakarta' },
+    'classes/kelas-a/sessions/sesi-a': {
+      moduleTitle: 'Kueri SQL',
+      room: 'Lab',
+      startsAt: time,
+      endsAt: time,
+      status: 'open',
+    },
+  };
+  const reads = [];
+  const { StudentSession } = loadTypeScript('src/features/participation/student.tsx', {
+    'expo-router': { useLocalSearchParams: () => ({ classId: 'kelas-a', sessionId: 'sesi-a' }) },
+    react: { useState: (initial) => [initial, () => {}], useRef: (current) => ({ current }) },
+    'react-native': { Text: 'text' },
+    '@/features/academic/time': { formatDateTime: () => '09.00' },
+    '@/components/auth-screen': { AuthButton: 'auth-button', AuthError: 'auth-error' },
+    '@/constants/theme': { SessionStatusStyles: { open: { label: 'Dibuka' } } },
+    '@/hooks/useAuth': { useAuth: () => ({ user: { uid: 'praktikan-a' }, role: 'praktikan' }) },
+    '@/lib/mutations': {},
+    './data': {
+      useLive: (_uid, source) => {
+        if (source) reads.push(source);
+        return { data: data[source?.path] ?? null, loading: false, error: null, offline: false };
       },
     },
+    './ui': { Page: 'page', Feedback: 'feedback', Card: 'card', styles: {} },
+    './use-review-access': {},
   });
-  return { tree: Screen(), calls };
-}
-
-function elements(tree) {
-  if (!tree || typeof tree !== 'object') return [];
-  if (Array.isArray(tree)) return tree.flatMap(elements);
-  return [tree, ...elements(tree.props?.children)];
-}
-
-function textContent(tree) {
-  if (typeof tree === 'string' || typeof tree === 'number') return String(tree);
-  if (!tree || typeof tree !== 'object') return '';
-  if (Array.isArray(tree)) return tree.map(textContent).join(' ');
-  return textContent(tree.props?.children);
-}
-
-const sessionFixture = {
-  id: 'cloud-session', className: 'IF-3A', practicum: 'Basis Data', module: 'Modul 1',
-  date: '2026-11-15', startTime: '08:00', endTime: '10:00', room: 'Lab 1', status: 'open',
-};
-
-test('session cards navigate with the Firestore session ID and the authenticated role', () => {
-  for (const [role, pathname] of [
-    ['asisten', '/(app)/asisten/sesi'], ['praktikan', '/(app)/praktikan/presensi'],
-  ]) {
-    const rendered = renderSchedule(role, { sessions: [sessionFixture] });
-    const card = elements(rendered.tree).find((element) => element.type === 'pressable');
-    card.props.onPress();
-    assert.deepEqual(rendered.calls, [{ pathname, params: { sessionId: 'cloud-session' } }]);
-    assert.match(textContent(rendered.tree), /Pengguna Firebase/);
-  }
-});
-
-test('schedule renders loading, empty, and retryable errors without a session card', () => {
-  for (const [state, expected] of [
-    [{ loading: true }, /Memuat jadwal/],
-    [{ sessions: [] }, /Belum ada jadwal/],
-    [{ error: 'Koneksi gagal' }, /Koneksi gagal/],
-  ]) {
-    const rendered = renderSchedule('praktikan', state);
-    assert.match(textContent(rendered.tree), expected);
-    assert.equal(elements(rendered.tree).some((element) => element.type === 'pressable'), false);
-    if (state.error) {
-      elements(rendered.tree).find((element) => element.props?.title === 'Coba lagi').props.onPress();
-      assert.deepEqual(rendered.calls, ['retry']);
-    }
-  }
-});
-
-test('schedule badges map all Sprint 2 statuses to the existing theme labels', () => {
-  const rendered = renderSchedule('asisten', {
-    sessions: ['upcoming', 'open', 'closed'].map((status) => ({ ...sessionFixture, id: status, status })),
-  });
-  const text = textContent(rendered.tree);
-  for (const label of ['Belum Dibuka', 'Sedang Dibuka', 'Sesi Ditutup']) assert.ok(text.includes(label));
-});
-
-test('real Expo linking resolves login and home to different routes', () => {
-  const files = fs.readdirSync(path.join(__dirname, '../src/app'), { recursive: true })
-    .filter((file) => file.endsWith('.tsx')).map((file) => `./${file}`);
-  const context = () => ({ default: () => null });
-  context.keys = () => files;
-  const config = getReactNavigationConfig(getRoutes(context, {
-    platform: 'android', importMode: 'lazy', skipGenerated: true, ignoreEntryPoints: true,
-  }), true);
-
-  assert.equal(getStateFromPath('/', config).routes[0].name, 'index');
-  const home = getStateFromPath('/home', config).routes[0];
-  assert.equal(home.name, '(app)');
-  assert.equal(home.state.routes[0].name, 'home');
-  assert.equal('index' in config.screens['(app)'].screens, false);
-});
-
-test('real Expo stack router settles on login after login/logout and repeated auth notifications', () => {
-  const router = StackRouter({});
-  const loggedOut = declaredScreens({ user: null, profile: null, loading: false });
-  const loggedIn = declaredScreens({ user: { uid: 'student' }, profile: { role: 'praktikan' }, loading: false });
-  const options = { routeParamList: {}, routeGetIdList: {} };
-
-  for (const entry of ['index', 'register']) {
-    let state = {
-      stale: false, type: 'stack', key: 'root', index: 0,
-      routeNames: loggedOut, routes: [{ key: `${entry}-key`, name: entry }],
-    };
-    function changeRoutes(routeNames) {
-      state = router.getStateForAction(state, {
-        type: 'ROUTE_NAMES_CHANGED', payload: { routeNames },
-      }, options).state;
-    }
-
-    changeRoutes(loggedIn);
-    assert.equal(state.routes[state.index].name, 'index');
-    // The stable entry screen redirects only after both account and profile are ready.
-    state = router.getStateForAction(state, {
-      type: 'REPLACE', payload: { name: '(app)' },
-    }, options).state;
-    assert.equal(state.routes[state.index].name, '(app)');
-    changeRoutes(loggedOut);
-    assert.equal(state.routes[state.index].name, 'index');
-    assert.equal(state.routes.some((route) => route.name === '(app)'), false);
-    const settled = state;
-    changeRoutes(loggedOut);
-    assert.equal(state, settled);
+  const detail = StudentSession();
+  const nodes = elements(detail.type(detail.props));
+  assert.deepEqual(
+    reads.map(({ kind, path }) => [kind, path]),
+    [
+      ['doc', 'classes/kelas-a'],
+      ['doc', 'classes/kelas-a/sessions/sesi-a'],
+      ['doc', 'attendances/sesi-a~praktikan-a'],
+      ['doc', 'permits/sesi-a~praktikan-a'],
+    ],
+  );
+  for (const title of ['Presensi sekarang', 'Ajukan izin']) {
+    assert.ok(nodes.some(({ type, props }) => type === 'auth-button' && props.title === title));
   }
 });

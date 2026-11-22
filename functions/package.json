@@ -1,0 +1,12 @@
+{
+  "name": "labsync-functions",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test tests/*.test.cjs",
+    "check": "node --check scripts/profile.cjs && node --check ai/sentiment.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.0.2"
+  }
+}

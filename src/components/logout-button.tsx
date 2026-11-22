@@ -20,16 +20,33 @@ export function LogoutButton() {
   }
 
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel="Keluar"
-      accessibilityState={{ disabled: busy, busy }} disabled={busy}
-      onPress={submit} style={({ pressed }) => [styles.button, pressed && styles.pressed]}>
-      {busy ? <ActivityIndicator color={BrandColors.forest} /> : <Text accessible={false} style={styles.icon}>↪</Text>}
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel="Keluar"
+      accessibilityState={{ disabled: busy, busy }}
+      disabled={busy}
+      onPress={submit}
+      style={({ pressed }) => [styles.button, pressed && styles.pressed]}
+    >
+      {busy ? (
+        <ActivityIndicator color={BrandColors.forest} />
+      ) : (
+        <Text accessible={false} style={styles.icon}>
+          ↪
+        </Text>
+      )}
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  button: { minWidth: 48, minHeight: 44, marginRight: 8, alignItems: 'center', justifyContent: 'center' },
+  button: {
+    minWidth: 48,
+    minHeight: 44,
+    marginRight: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   icon: { fontSize: 28, color: BrandColors.forest, fontWeight: '700' },
   pressed: { opacity: 0.75 },
 });

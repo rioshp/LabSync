@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Image } from 'expo-image';
+import { SymbolView } from 'expo-symbols';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -17,15 +19,20 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BrandColors } from '@/constants/theme';
 
-export function AuthScreen({ title, description, children, intro = false }: {
+export function AuthScreen({
+  title,
+  description,
+  children,
+  intro = false,
+}: {
   title: string;
-  description: string;
+  description?: string;
   children: ReactNode;
   intro?: boolean;
 }) {
   const insets = useSafeAreaInsets();
   const [showIntro, setShowIntro] = useState(intro);
-  const introProgress = useRef(new Animated.Value(intro ? 0 : 1)).current;
+  const [introProgress] = useState(() => new Animated.Value(intro ? 0 : 1));
 
   useEffect(() => {
     if (!intro) return;
@@ -44,18 +51,23 @@ export function AuthScreen({ title, description, children, intro = false }: {
   }, [intro, introProgress]);
 
   return (
-    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView
+      style={styles.screen}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       <Animated.View
         style={[styles.page, { opacity: introProgress }]}
         pointerEvents={showIntro ? 'none' : 'auto'}
         accessibilityElementsHidden={showIntro}
-        importantForAccessibility={showIntro ? 'no-hide-descendants' : 'auto'}>
+        importantForAccessibility={showIntro ? 'no-hide-descendants' : 'auto'}
+      >
         <View
           pointerEvents="none"
           accessible={false}
           accessibilityElementsHidden
           importantForAccessibility="no-hide-descendants"
-          style={styles.background}>
+          style={styles.background}
+        >
           <View style={styles.backgroundTop} />
           <View style={styles.backgroundSide} />
           <View style={styles.backgroundBottom} />
@@ -73,10 +85,13 @@ export function AuthScreen({ title, description, children, intro = false }: {
           contentContainerStyle={[
             styles.content,
             { paddingTop: insets.top + 78, paddingBottom: insets.bottom + 32 },
-          ]}>
+          ]}
+        >
           <View style={styles.hero}>
-            <Text accessibilityRole="header" style={styles.title}>{title}</Text>
-            <Text style={styles.description}>{description}</Text>
+            <Text accessibilityRole="header" style={styles.title}>
+              {title}
+            </Text>
+            {description && <Text style={styles.description}>{description}</Text>}
           </View>
           {children}
         </ScrollView>
@@ -88,7 +103,8 @@ export function AuthScreen({ title, description, children, intro = false }: {
             { opacity: introProgress.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) },
           ]}
           accessibilityLabel="Memuat presensi praktikum"
-          accessibilityRole="progressbar">
+          accessibilityRole="progressbar"
+        >
           <View style={styles.introMark}>
             {[0, 1, 2, 3].map((block) => (
               <Animated.View
@@ -123,34 +139,104 @@ export function AuthScreen({ title, description, children, intro = false }: {
   );
 }
 
-export function AuthField({ label, ...props }: TextInputProps & { label: string }) {
+export function AuthField({
+  label,
+  passwordToggle = false,
+  secureTextEntry,
+  style,
+  ...props
+}: TextInputProps & { label: string; passwordToggle?: boolean }) {
+  const [passwordVisible, setPasswordVisible] = useState(false);
+  const visibilityLabel = passwordVisible ? 'Sembunyikan password' : 'Tampilkan password';
+
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
-      <TextInput accessibilityLabel={label} placeholderTextColor={BrandColors.muted} {...props} style={styles.input} />
+      <View style={styles.inputWrap}>
+        <TextInput
+          accessibilityLabel={label}
+          placeholderTextColor={BrandColors.muted}
+          {...props}
+          secureTextEntry={passwordToggle ? !passwordVisible : secureTextEntry}
+          style={[styles.input, passwordToggle && styles.inputWithToggle, style]}
+        />
+        {passwordToggle && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={visibilityLabel}
+            accessibilityState={{ disabled: props.editable === false }}
+            disabled={props.editable === false}
+            onPress={() => setPasswordVisible((visible) => !visible)}
+            style={styles.passwordToggle}
+          >
+            <SymbolView
+              name={{
+                ios: passwordVisible ? 'eye.slash' : 'eye',
+                android: passwordVisible ? 'visibility_off' : 'visibility',
+                web: passwordVisible ? 'visibility_off' : 'visibility',
+              }}
+              tintColor={BrandColors.forest}
+              size={22}
+            />
+          </Pressable>
+        )}
+      </View>
     </View>
   );
 }
 
-export function AuthButton({ title, onPress, busy = false, disabled = false }: {
+export function AuthButton({
+  title,
+  onPress,
+  busy = false,
+  disabled = false,
+  variant = 'primary',
+}: {
   title: string;
   onPress: () => void;
   busy?: boolean;
   disabled?: boolean;
+  variant?: 'primary' | 'google';
 }) {
+  const isGoogle = variant === 'google';
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={title}
-      accessibilityState={{ disabled: busy || disabled, busy }} disabled={busy || disabled}
-      onPress={onPress} style={({ pressed }) => [
-        styles.submit, (busy || disabled) && styles.disabledSubmit, pressed && styles.pressed,
-      ]}>
-      {busy ? <ActivityIndicator color={BrandColors.paper} /> : <Text style={styles.submitText}>{title}</Text>}
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      accessibilityState={{ disabled: busy || disabled, busy }}
+      disabled={busy || disabled}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.submit,
+        isGoogle && styles.googleButton,
+        (busy || disabled) && (isGoogle ? styles.disabledGoogleButton : styles.disabledSubmit),
+        pressed && styles.pressed,
+      ]}
+    >
+      {busy ? (
+        <ActivityIndicator color={isGoogle ? '#1F1F1F' : BrandColors.paper} />
+      ) : (
+        <>
+          {isGoogle && (
+            <Image
+              source={require('../../assets/images/google-logo.svg')}
+              accessible={false}
+              style={styles.googleLogo}
+            />
+          )}
+          <Text style={[styles.submitText, isGoogle && styles.googleButtonText]}>{title}</Text>
+        </>
+      )}
     </Pressable>
   );
 }
 
 export function AuthError({ message }: { message: string | null }) {
-  return message ? <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.error}>{message}</Text> : null;
+  return message ? (
+    <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.error}>
+      {message}
+    </Text>
+  ) : null;
 }
 
 const styles = StyleSheet.create({
@@ -305,50 +391,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 21,
   },
-  roleList: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  option: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    minHeight: 68,
-    padding: 14,
-    borderWidth: 2,
-    borderRadius: 14,
-    borderColor: BrandColors.line,
-    backgroundColor: BrandColors.paper,
-  },
-  roleOption: {
-    flex: 1,
-  },
-  selectedOption: {
-    borderColor: BrandColors.forest,
-    backgroundColor: BrandColors.softGreen,
-  },
-  optionContent: {
-    flex: 1,
-    gap: 4,
-  },
-  radio: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: BrandColors.muted,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  selectedRadio: {
-    borderColor: BrandColors.forest,
-  },
-  radioDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: BrandColors.forest,
-  },
   submit: {
     minHeight: 56,
     padding: 16,
@@ -356,6 +398,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: BrandColors.forest,
+  },
+  googleButton: {
+    flexDirection: 'row',
+    gap: 12,
+    backgroundColor: BrandColors.paper,
+    borderWidth: 1,
+    borderColor: '#747775',
+  },
+  disabledGoogleButton: {
+    opacity: 0.6,
+  },
+  googleLogo: {
+    width: 18,
+    height: 18,
+  },
+  googleButtonText: {
+    color: '#1F1F1F',
   },
   disabledSubmit: {
     backgroundColor: BrandColors.muted,
@@ -378,6 +437,20 @@ const styles = StyleSheet.create({
     color: BrandColors.forestDeep,
     fontSize: 16,
     fontWeight: '700',
+  },
+  inputWrap: {
+    justifyContent: 'center',
+  },
+  inputWithToggle: {
+    paddingEnd: 54,
+  },
+  passwordToggle: {
+    position: 'absolute',
+    end: 4,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   input: {
     minHeight: 56,
@@ -407,11 +480,4 @@ export const authStyles = {
   form: styles.form,
   link: styles.link,
   label: styles.label,
-  roles: styles.roleList,
-  role: [styles.option, styles.roleOption],
-  selectedRole: styles.selectedOption,
-  roleContent: styles.optionContent,
-  radio: styles.radio,
-  selectedRadio: styles.selectedRadio,
-  radioDot: styles.radioDot,
 };

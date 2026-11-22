@@ -25,9 +25,13 @@ export function AuthSessionStatus({ message }: { message?: string | null }) {
   }
 
   return (
-    <AuthScreen title={loading ? 'Memuat akun.' : 'Profil belum siap.'}
-      description="Kami memeriksa akun dan profil kamu.">
-      {loading ? <ActivityIndicator size="large" color={BrandColors.forest} /> : (
+    <AuthScreen
+      title={loading ? 'Memuat akun.' : 'Profil belum siap.'}
+      description="Kami memeriksa akun dan profil kamu."
+    >
+      {loading ? (
+        <ActivityIndicator size="large" color={BrandColors.forest} />
+      ) : (
         <>
           <AuthError message={logoutError ?? message ?? error} />
           <AuthButton title="Coba lagi" onPress={retry} disabled={signingOut} />
@@ -37,4 +41,3 @@ export function AuthSessionStatus({ message }: { message?: string | null }) {
     </AuthScreen>
   );
 }
-
