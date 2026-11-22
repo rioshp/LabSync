@@ -17,6 +17,7 @@ export const styles = StyleSheet.create({
     borderBottomLeftRadius: 28,
     borderBottomRightRadius: 28,
     gap: 14,
+    overflow: 'hidden',
   },
   darkBandTop: {
     flexDirection: 'row',

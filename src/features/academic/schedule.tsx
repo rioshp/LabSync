@@ -5,7 +5,7 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-nati
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AuthButton } from '@/components/auth-screen';
-import { DotMatrixOverlay } from '@/components/labsync-brand';
+import { DarkGradientOverlay, DotMatrixOverlay, ScreenBackdrop } from '@/components/labsync-brand';
 import { BrandColors, SessionStatusStyles } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
 import { groupSchedule } from '@/features/academic/time';
@@ -57,6 +57,7 @@ export default function ScheduleScreen() {
 
   return (
     <View style={styles.screen}>
+      <ScreenBackdrop variant="waves" />
       <ScrollView
         style={styles.scroll}
         showsVerticalScrollIndicator={false}
@@ -66,6 +67,7 @@ export default function ScheduleScreen() {
         ]}
       >
         <View style={styles.heroCard}>
+          <DarkGradientOverlay />
           <DotMatrixOverlay />
           <View style={styles.heroTop}>
             <Text style={styles.eyebrow}>
@@ -149,7 +151,13 @@ export default function ScheduleScreen() {
               const dateLabel = formatStartDate(session);
               const timeLabel = `${session.startTime} – ${session.endTime}`;
               return (
-                <View key={session.id} style={styles.sessionCard}>
+                <View
+                  key={session.id}
+                  style={[
+                    styles.sessionCard,
+                    session.status === 'open' && styles.sessionCardOpen,
+                  ]}
+                >
                   <View style={styles.sessionHeader}>
                     <View style={styles.classBadge}>
                       <Text numberOfLines={1} style={styles.classText}>

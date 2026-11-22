@@ -7,7 +7,13 @@ import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-nati
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AuthButton } from '@/components/auth-screen';
-import { BottomSheetModal, DiagonalHatchOverlay } from '@/components/labsync-brand';
+import {
+  BottomSheetModal,
+  DarkContourOverlay,
+  DarkGradientOverlay,
+  DiagonalHatchOverlay,
+  ScreenBackdrop,
+} from '@/components/labsync-brand';
 import { BrandColors, SessionStatusStyles } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
 import { mutationError, mutate } from '@/lib/mutations';
@@ -102,11 +108,14 @@ export default function AssistantSessionRoute() {
   return (
     <View style={styles.screen}>
       <StatusBar style="light" />
+      <ScreenBackdrop variant="geometric" />
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 32 }]}
       >
         <View style={[styles.darkBand, { paddingTop: insets.top + 12 }]}>
+          <DarkGradientOverlay />
+          <DarkContourOverlay />
           <View style={styles.darkBandTop}>
             <Pressable
               accessibilityRole="button"

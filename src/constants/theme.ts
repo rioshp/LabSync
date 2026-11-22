@@ -1,53 +1,53 @@
 export const BrandColors = {
-  // Monochrome Student Bento v3 tokens
-  ink: '#18181B',
-  inkSoft: '#3F3F46',
-  muted: '#71717A',
-  neutralMid: '#A1A1AA',
-  inputBorder: '#D4D4D8',
-  line: '#E4E4E7',
-  soft: '#EDEDEF',
-  pageBackground: '#F4F4F5',
-  paper: '#FFFFFF',
+  // Warm Alabaster Monochrome Student Bento tokens
+  ink: '#141414',
+  inkSoft: '#3A3A38',
+  muted: '#6F6E6A',
+  neutralMid: '#9D9B95',
+  inputBorder: '#CBC8C1',
+  line: '#DBD9D3',
+  soft: '#E4E2DD',
+  pageBackground: '#ECEBE7',
+  paper: '#F8F7F4',
 
   // Restrained crimson accent — destructive actions, disabled state, negative AI sentiment
   danger: '#DC2626',
-  dangerSoft: '#FEF2F2',
+  dangerSoft: '#FBF0EF',
 
-  // Legacy aliases kept for incremental migration across stages
-  forest: '#18181B',
-  forestDeep: '#18181B',
-  forestSoft: '#3F3F46',
-  sage: '#A1A1AA',
-  sageLight: '#E4E4E7',
-  softGreen: '#EDEDEF',
-  yellow: '#18181B',
+  // Legacy aliases kept for compatibility
+  forest: '#141414',
+  forestDeep: '#141414',
+  forestSoft: '#3A3A38',
+  sage: '#9D9B95',
+  sageLight: '#DBD9D3',
+  softGreen: '#E4E2DD',
+  yellow: '#141414',
 } as const;
 
 /** Tampilan status sesi yang disimpan di Firestore. */
 export const SessionStatusStyles = {
   scheduled: {
     label: 'Belum dibuka',
-    bg: '#EDEDEF',
-    border: '#E4E4E7',
-    text: '#18181B',
+    bg: '#E4E2DD',
+    border: '#DBD9D3',
+    text: '#141414',
   },
   open: {
     label: 'Terbuka',
-    bg: '#18181B',
-    border: '#18181B',
-    text: '#FFFFFF',
+    bg: '#141414',
+    border: '#141414',
+    text: '#F8F7F4',
   },
   closed: {
     label: 'Selesai',
-    bg: '#FFFFFF',
-    border: '#E4E4E7',
-    text: '#71717A',
+    bg: '#F8F7F4',
+    border: '#DBD9D3',
+    text: '#6F6E6A',
   },
   cancelled: {
     label: 'Dibatalkan',
-    bg: '#FFFFFF',
+    bg: '#F8F7F4',
     border: '#DC2626',
-    text: '#18181B',
+    text: '#141414',
   },
 } as const;

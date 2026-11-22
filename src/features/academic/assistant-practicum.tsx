@@ -14,7 +14,13 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AuthButton } from '@/components/auth-screen';
-import { BottomSheetModal } from '@/components/labsync-brand';
+import {
+  BottomSheetModal,
+  CornerDotAccent,
+  DarkContourOverlay,
+  DarkGradientOverlay,
+  ScreenBackdrop,
+} from '@/components/labsync-brand';
 import { BrandColors, SessionStatusStyles } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
 import { mutationError, mutate, newRequestId } from '@/lib/mutations';
@@ -356,6 +362,7 @@ function AssistantPracticumScreen({ classDetail }: { classDetail: boolean }) {
   return (
     <View style={styles.screen}>
       {classDetail ? <StatusBar style="light" /> : null}
+      <ScreenBackdrop variant="topo" />
       <ScrollView
         key={classDetail ? classTab : 'classes'}
         showsVerticalScrollIndicator={false}
@@ -368,6 +375,8 @@ function AssistantPracticumScreen({ classDetail }: { classDetail: boolean }) {
       >
         {classDetail ? (
           <View style={[styles.darkBand, { paddingTop: insets.top + 12 }]}>
+            <DarkGradientOverlay />
+            <DarkContourOverlay />
             <View style={styles.darkBandTop}>
               <Pressable
                 accessibilityRole="button"
@@ -459,10 +468,13 @@ function AssistantPracticumScreen({ classDetail }: { classDetail: boolean }) {
                         pressed && styles.pressed,
                       ]}
                     >
+                      {isActive && idx === 0 ? <CornerDotAccent /> : null}
                       <View style={styles.resourceTop}>
-                        <Text style={styles.indexEyebrow}>
-                          {String(idx + 1).padStart(2, '0')}
-                        </Text>
+                        <View style={styles.indexBadge}>
+                          <Text style={styles.indexEyebrow}>
+                            {String(idx + 1).padStart(2, '0')}
+                          </Text>
+                        </View>
                         <StatusPill
                           label={isActive ? 'Aktif' : 'Diarsipkan'}
                           archived={!isActive}

@@ -96,6 +96,10 @@ export const styles = StyleSheet.create({
     shadowRadius: 14,
     elevation: 2,
   },
+  sessionCardOpen: {
+    borderWidth: 1.5,
+    borderColor: BrandColors.ink,
+  },
   sessionHeader: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -4,10 +4,18 @@ import { StatusBar } from 'expo-status-bar';
 import { SymbolView, type SFSymbol } from 'expo-symbols';
 import { Pressable, StyleSheet, Text, View, type ColorValue } from 'react-native';
 
-import { CsGraphLogo } from '@/components/labsync-brand';
+import { CsGraphLogo, ScreenBackdrop } from '@/components/labsync-brand';
 import { LogoutButton } from '@/components/logout-button';
 import { BrandColors } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
+
+function HeaderBackdrop({ variant }: { variant: 'waves' | 'topo' | 'blobs' | 'geometric' }) {
+  return (
+    <View style={styles.headerBg}>
+      <ScreenBackdrop variant={variant} />
+    </View>
+  );
+}
 
 function HeaderTitle({ title }: { title: string }) {
   return (
@@ -146,6 +154,7 @@ export default function AppTabs() {
           name="jadwal"
           options={{
             title: role === 'asisten' ? 'Jadwal' : 'Jadwal Saya',
+            headerBackground: () => <HeaderBackdrop variant="waves" />,
             headerTitle: () => (
               <HeaderTitle title={role === 'asisten' ? 'Jadwal praktikum' : 'Jadwal saya'} />
             ),
@@ -159,6 +168,7 @@ export default function AppTabs() {
             name="asisten/praktikum"
             options={{
               title: 'Praktikum',
+              headerBackground: () => <HeaderBackdrop variant="topo" />,
               headerTitle: () => <HeaderTitle title="Kelas praktikum" />,
               tabBarIcon: ({ color, size }) => (
                 <TabIcon ios="square.grid.2x2" android="grid_view" color={color} size={size} />
@@ -169,6 +179,7 @@ export default function AppTabs() {
             name="asisten/izin"
             options={{
               title: 'Daftar Izin',
+              headerBackground: () => <HeaderBackdrop variant="geometric" />,
               headerTitle: () => <HeaderTitle title="Daftar izin" />,
               tabBarIcon: ({ color, size }) => (
                 <TabIcon ios="doc.text" android="description" color={color} size={size} />
@@ -181,6 +192,7 @@ export default function AppTabs() {
             name="praktikan/kelas"
             options={{
               title: 'Kelas Saya',
+              headerBackground: () => <HeaderBackdrop variant="topo" />,
               headerTitle: () => <HeaderTitle title="Kelas saya" />,
               tabBarIcon: ({ color, size }) => (
                 <TabIcon ios="square.grid.2x2" android="grid_view" color={color} size={size} />
@@ -204,6 +216,11 @@ export default function AppTabs() {
 }
 
 const styles = StyleSheet.create({
+  headerBg: {
+    flex: 1,
+    backgroundColor: BrandColors.pageBackground,
+    overflow: 'hidden',
+  },
   headerTitleWrap: {
     flexDirection: 'row',
     alignItems: 'center',

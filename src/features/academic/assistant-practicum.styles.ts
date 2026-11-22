@@ -24,6 +24,7 @@ export const styles = StyleSheet.create({
     borderBottomLeftRadius: 28,
     borderBottomRightRadius: 28,
     gap: 14,
+    overflow: 'hidden',
   },
   darkBandTop: {
     flexDirection: 'row',
@@ -168,8 +169,16 @@ export const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 10,
   },
+  indexBadge: {
+    backgroundColor: BrandColors.pageBackground,
+    borderWidth: 1,
+    borderColor: BrandColors.line,
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+  },
   indexEyebrow: {
-    color: BrandColors.muted,
+    color: BrandColors.ink,
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0.5,

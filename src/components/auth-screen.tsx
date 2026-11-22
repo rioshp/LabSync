@@ -16,7 +16,12 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { DiagonalHatchOverlay, LabSyncLockup } from '@/components/labsync-brand';
+import {
+  DarkGradientOverlay,
+  DiagonalHatchOverlay,
+  LabSyncLockup,
+  ScreenBackdrop,
+} from '@/components/labsync-brand';
 import { BrandColors } from '@/constants/theme';
 
 const AUTH_WAVE = require('../../assets/images/auth-wave.svg');
@@ -64,6 +69,7 @@ export function AuthScreen({
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <StatusBar style={isWave ? 'light' : 'dark'} />
+      <ScreenBackdrop variant={isWave ? 'waves' : 'blobs'} />
       <ScrollView
         style={styles.scroll}
         showsVerticalScrollIndicator={false}
@@ -76,6 +82,7 @@ export function AuthScreen({
         {isWave ? (
           <View style={styles.waveWrapper}>
             <View style={[styles.waveHeader, { paddingTop: insets.top + 14 }]}>
+              <DarkGradientOverlay />
               <Image
                 source={DARK_CONTOUR}
                 contentFit="contain"

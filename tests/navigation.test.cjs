@@ -60,7 +60,10 @@ function tabs(role) {
       View: 'view',
     },
     '@/hooks/useAuth': { useAuth: () => ({ role }) },
-    '@/components/labsync-brand': { CsGraphLogo: 'cs-graph-logo' },
+    '@/components/labsync-brand': {
+      CsGraphLogo: 'cs-graph-logo',
+      ScreenBackdrop: 'screen-backdrop',
+    },
     '@/components/logout-button': { LogoutButton: 'logout-button' },
     '@/constants/theme': { BrandColors: {} },
   }).default;
@@ -315,7 +318,10 @@ test('session detail opens the selected tab and loads data only for that tab', (
       '@/components/auth-screen': { AuthButton: 'auth-button' },
       '@/components/labsync-brand': {
         BottomSheetModal: 'bottom-sheet-modal',
+        DarkContourOverlay: 'dark-contour',
+        DarkGradientOverlay: 'dark-gradient',
         DiagonalHatchOverlay: 'diagonal-hatch',
+        ScreenBackdrop: 'screen-backdrop',
       },
       '@/constants/theme': {
         BrandColors: {},
@@ -415,7 +421,14 @@ test('an enrolled student can check in before attendance or permit documents exi
       useStudentClasses: () => ({ value: [], loading: false, error: null, retry: () => {} }),
     },
     '@/components/auth-screen': { AuthButton: 'auth-button', AuthError: 'auth-error' },
-    '@/components/labsync-brand': { ConcentricArcOverlay: 'arc' },
+    '@/components/labsync-brand': {
+      ConcentricArcOverlay: 'arc',
+      CornerDotAccent: 'corner-dots',
+      DarkContourOverlay: 'dark-contour',
+      DarkGradientOverlay: 'dark-gradient',
+      DiagonalHatchOverlay: 'diagonal-hatch',
+      ScreenBackdrop: 'screen-backdrop',
+    },
     '@/constants/theme': { BrandColors: {}, SessionStatusStyles: { open: { label: 'Dibuka' } } },
     '@/hooks/useAuth': { useAuth: () => ({ user: { uid: 'praktikan-a' }, role: 'praktikan' }) },
     '@/lib/mutations': {},

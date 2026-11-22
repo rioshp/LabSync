@@ -78,7 +78,7 @@ function PermitInbox({ uid }: { uid: string }) {
   }
 
   return (
-    <Page arc tabScreen>
+    <Page arc tabScreen backdrop="geometric">
       <View style={local.filters}>
         {filters.map((item) => {
           const active = filter === item;

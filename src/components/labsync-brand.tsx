@@ -9,6 +9,34 @@ import { BrandColors } from '@/constants/theme';
 const LOGO_DARK = require('../../assets/images/logo-graph-dark.svg');
 const LOGO_LIGHT = require('../../assets/images/logo-graph-light.svg');
 const CONCENTRIC_ARCS = require('../../assets/images/concentric-arcs.svg');
+const DARK_CONTOUR = require('../../assets/images/dark-contour.svg');
+const DARK_GRADIENT = require('../../assets/images/dark-gradient.svg');
+const BG_WAVES = require('../../assets/images/bg-paper-waves.jpg');
+const BG_TOPO = require('../../assets/images/bg-topo-lines.jpg');
+const BG_BLOBS = require('../../assets/images/bg-ink-blobs.jpg');
+const BG_GEO = require('../../assets/images/bg-geometric.jpg');
+
+const BACKDROP_SOURCES = {
+  waves: { source: BG_WAVES, opacity: 0.48 },
+  topo: { source: BG_TOPO, opacity: 0.13 },
+  blobs: { source: BG_BLOBS, opacity: 0.1 },
+  geometric: { source: BG_GEO, opacity: 0.08 },
+} as const;
+
+/** Latar ambient monokrom lembut per area layar (paper waves, topographic contour, ink blobs). */
+export function ScreenBackdrop({ variant }: { variant: keyof typeof BACKDROP_SOURCES }) {
+  const { source, opacity } = BACKDROP_SOURCES[variant];
+  return (
+    <Image
+      source={source}
+      contentFit="cover"
+      contentPosition="top"
+      pointerEvents="none"
+      accessible={false}
+      style={[StyleSheet.absoluteFill, { opacity }]}
+    />
+  );
+}
 
 /** Logo CS Graph Cycle (Opsi 07) — 3 simpul segitiga terhubung, dirender dari aset SVG lokal. */
 export function CsGraphLogo({ size = 30, inverted = false }: { size?: number; inverted?: boolean }) {
@@ -93,6 +121,47 @@ export function ConcentricArcOverlay() {
       accessible={false}
       style={styles.arcImage}
     />
+  );
+}
+
+/** Gradient monokrom gelap halus (#2C2C2A -> #141414) untuk header gelap dan kartu hero. */
+export function DarkGradientOverlay() {
+  return (
+    <Image
+      source={DARK_GRADIENT}
+      contentFit="fill"
+      pointerEvents="none"
+      accessible={false}
+      style={StyleSheet.absoluteFill}
+    />
+  );
+}
+
+/** Motif garis kontur organik halus untuk header gelap (Profil, Detail Kelas, Detail Sesi, Rekap). */
+export function DarkContourOverlay() {
+  return (
+    <Image
+      source={DARK_CONTOUR}
+      contentFit="contain"
+      pointerEvents="none"
+      accessible={false}
+      style={styles.darkContour}
+    />
+  );
+}
+
+/** Aksen titik-titik halus di pojok kanan bawah kartu kelas aktif pertama (aman dari badge atas). */
+export function CornerDotAccent() {
+  return (
+    <View pointerEvents="none" accessible={false} style={styles.cornerDots}>
+      {[0, 1, 2, 3].map((row) => (
+        <View key={row} style={styles.cornerDotRow}>
+          {[0, 1, 2, 3, 4].map((col) => (
+            <View key={col} style={styles.cornerDot} />
+          ))}
+        </View>
+      ))}
+    </View>
   );
 }
 
@@ -223,9 +292,34 @@ const styles = StyleSheet.create({
     width: 190,
     height: 190,
   },
+  darkContour: {
+    position: 'absolute',
+    top: -54,
+    right: -54,
+    width: 220,
+    height: 220,
+    opacity: 0.45,
+  },
+  cornerDots: {
+    position: 'absolute',
+    bottom: 12,
+    right: 14,
+    gap: 6,
+    opacity: 0.65,
+  },
+  cornerDotRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  cornerDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 1.5,
+    backgroundColor: BrandColors.inputBorder,
+  },
   sheetBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(24, 24, 27, 0.52)',
+    backgroundColor: 'rgba(24, 24, 27, 0.54)',
     justifyContent: 'flex-end',
   },
   sheetDismissArea: {
@@ -235,27 +329,37 @@ const styles = StyleSheet.create({
     backgroundColor: BrandColors.paper,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
+    borderTopWidth: 1,
+    borderColor: 'rgba(24, 24, 27, 0.06)',
     paddingTop: 12,
     paddingHorizontal: 20,
     maxHeight: '88%',
     gap: 12,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: -12 },
+    shadowOpacity: 0.18,
+    shadowRadius: 24,
+    elevation: 16,
   },
   sheetHandle: {
-    width: 40,
-    height: 4,
+    width: 42,
+    height: 4.5,
     borderRadius: 999,
     backgroundColor: BrandColors.inputBorder,
     alignSelf: 'center',
-    marginBottom: 2,
+    marginBottom: 4,
   },
   sheetHandleDanger: {
     backgroundColor: BrandColors.danger,
-    opacity: 0.75,
+    opacity: 0.78,
   },
   sheetHeaderRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 10,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: BrandColors.line,
   },
   dangerIconBox: {
     width: 34,

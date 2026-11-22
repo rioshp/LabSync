@@ -9,7 +9,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { classLocalDateTime, formatDateTime } from '@/features/academic/time';
 import { useStudentClasses } from '@/features/academic/useAcademic';
 import { AuthButton, AuthError, AuthField } from '@/components/auth-screen';
-import { ConcentricArcOverlay } from '@/components/labsync-brand';
+import {
+  ConcentricArcOverlay,
+  CornerDotAccent,
+  DarkContourOverlay,
+  DarkGradientOverlay,
+  DiagonalHatchOverlay,
+  ScreenBackdrop,
+} from '@/components/labsync-brand';
 import { BrandColors, SessionStatusStyles } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
 import { mutate, mutationError } from '@/lib/mutations';
@@ -349,6 +356,7 @@ function ParticipationForm({
           ? 'Bagikan pengalaman praktikum kamu untuk sesi ini.'
           : 'Tuliskan alasan ketidakhadiran yang jelas untuk ditinjau asisten.'
       }
+      headerRight={<DiagonalHatchOverlay inline size={38} />}
       detail
       clean
     >
@@ -522,7 +530,7 @@ function StudentClassesContent({ uid }: { uid: string }) {
   }
 
   return (
-    <Page tabScreen>
+    <Page tabScreen backdrop="topo">
       <Feedback loading={loading} offline={offline} error={error} retry={retry} />
 
       {!loading && !error && activeClasses.length === 0 && pastClasses.length === 0 ? (
@@ -548,8 +556,11 @@ function StudentClassesContent({ uid }: { uid: string }) {
                 pressed && styles.pressed,
               ]}
             >
+              {idx === 0 ? <CornerDotAccent /> : null}
               <View style={local.classInfo}>
-                <Text style={local.classIndex}>{String(idx + 1).padStart(2, '0')}</Text>
+                <View style={local.classIndexBadge}>
+                  <Text style={local.classIndex}>{String(idx + 1).padStart(2, '0')}</Text>
+                </View>
                 <Text style={styles.heading}>{item.name}</Text>
               </View>
               <View style={local.badgeRow}>
@@ -669,12 +680,15 @@ function StudentClassDetailContent({
   return (
     <View style={styles.screen}>
       <StatusBar style="light" />
+      <ScreenBackdrop variant="topo" />
       <ConcentricArcOverlay />
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
       >
         <View style={[local.darkHeader, { paddingTop: insets.top + 12 }]}>
+          <DarkGradientOverlay />
+          <DarkContourOverlay />
           <View style={local.darkTopRow}>
             <Pressable
               accessibilityRole="button"
@@ -916,10 +930,19 @@ const local = StyleSheet.create({
     gap: 4,
   },
   classInfo: {
-    gap: 3,
+    gap: 5,
+  },
+  classIndexBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: BrandColors.pageBackground,
+    borderWidth: 1,
+    borderColor: BrandColors.line,
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
   },
   classIndex: {
-    color: BrandColors.muted,
+    color: BrandColors.ink,
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 0.5,
@@ -935,6 +958,7 @@ const local = StyleSheet.create({
     borderBottomLeftRadius: 28,
     borderBottomRightRadius: 28,
     gap: 14,
+    overflow: 'hidden',
   },
   darkTopRow: {
     flexDirection: 'row',

@@ -14,7 +14,11 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AuthButton, AuthError } from '@/components/auth-screen';
-import { BottomSheetModal, ConcentricArcOverlay } from '@/components/labsync-brand';
+import {
+  BottomSheetModal,
+  ConcentricArcOverlay,
+  ScreenBackdrop,
+} from '@/components/labsync-brand';
 import { BrandColors } from '@/constants/theme';
 
 const ARROW_BACK = require('../../../assets/images/arrow-back.svg');
@@ -26,6 +30,7 @@ export function Page({
   arc = false,
   clean = false,
   tabScreen = false,
+  backdrop,
   headerRight,
   children,
 }: {
@@ -35,15 +40,18 @@ export function Page({
   arc?: boolean;
   clean?: boolean;
   tabScreen?: boolean;
+  backdrop?: 'waves' | 'topo' | 'blobs' | 'geometric';
   headerRight?: ReactNode;
   children?: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
+  const resolvedBackdrop = backdrop ?? (clean ? 'blobs' : 'waves');
   return (
     <KeyboardAvoidingView
       style={[styles.screen, clean && styles.screenClean]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
+      <ScreenBackdrop variant={resolvedBackdrop} />
       {arc ? <ConcentricArcOverlay /> : null}
       <ScrollView
         showsVerticalScrollIndicator={false}

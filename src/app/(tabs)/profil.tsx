@@ -11,7 +11,12 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AuthButton, AuthError, AuthField } from '@/components/auth-screen';
-import { CsGraphLogo } from '@/components/labsync-brand';
+import {
+  CsGraphLogo,
+  DarkContourOverlay,
+  DarkGradientOverlay,
+  ScreenBackdrop,
+} from '@/components/labsync-brand';
 import { LogoutButton } from '@/components/logout-button';
 import { BrandColors } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
@@ -61,12 +66,15 @@ function ProfileContent({ user, profile }: { user: User; profile: UserProfile })
       style={styles.screen}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
+      <ScreenBackdrop variant="waves" />
       <ScrollView
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: insets.bottom + 106 }}
       >
         <View style={[styles.darkHeader, { paddingTop: insets.top + 10 }]}>
+          <DarkGradientOverlay />
+          <DarkContourOverlay />
           <View style={styles.topRow}>
             <View style={styles.topLeft}>
               <CsGraphLogo size={26} inverted />
@@ -76,8 +84,10 @@ function ProfileContent({ user, profile }: { user: User; profile: UserProfile })
           </View>
 
           <View style={styles.avatarBlock}>
-            <View style={styles.avatarCircle}>
-              <Text style={styles.avatarText}>{initialsOf(profile.displayName)}</Text>
+            <View style={styles.avatarRing}>
+              <View style={styles.avatarCircle}>
+                <Text style={styles.avatarText}>{initialsOf(profile.displayName)}</Text>
+              </View>
             </View>
             <Text style={styles.profileName}>{profile.displayName}</Text>
             <Text style={styles.profileEmail}>{user.email ?? 'Email tidak tersedia'}</Text>
@@ -156,6 +166,7 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 28,
     borderBottomRightRadius: 28,
     gap: 16,
+    overflow: 'hidden',
   },
   topRow: {
     flexDirection: 'row',
@@ -177,6 +188,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 5,
   },
+  avatarRing: {
+    padding: 4,
+    borderRadius: 34,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.16)',
+    marginBottom: 2,
+  },
   avatarCircle: {
     width: 56,
     height: 56,
@@ -186,7 +204,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.28)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 2,
   },
   avatarText: {
     color: BrandColors.paper,
