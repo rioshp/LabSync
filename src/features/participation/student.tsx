@@ -1,16 +1,28 @@
+import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
+import { SymbolView } from 'expo-symbols';
 import { useRef, useState } from 'react';
-import { Text } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { formatDateTime } from '@/features/academic/time';
+import { classLocalDateTime, formatDateTime } from '@/features/academic/time';
+import { useStudentClasses } from '@/features/academic/useAcademic';
 import { AuthButton, AuthError, AuthField } from '@/components/auth-screen';
-import { SessionStatusStyles } from '@/constants/theme';
+import {
+  ConcentricArcOverlay,
+  CornerDotAccent,
+  DarkContourOverlay,
+  DarkGradientOverlay,
+  DiagonalHatchOverlay,
+  ScreenBackdrop,
+} from '@/components/labsync-brand';
+import { BrandColors, SessionStatusStyles } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
 import { mutate, mutationError } from '@/lib/mutations';
 
 import {
   permitStatuses,
-  sentiments,
   useLive,
   type Attendance,
   type ClassInfo,
@@ -20,6 +32,22 @@ import {
 } from './data';
 import { Card, Feedback, Page, styles } from './ui';
 import { useReviewAccess } from './use-review-access';
+
+const ARROW_BACK_LIGHT = require('../../../assets/images/arrow-back-light.svg');
+
+function formatSessionDate(date: Date, timeZone: string) {
+  try {
+    return date.toLocaleDateString('id-ID', {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      timeZone,
+    });
+  } catch {
+    return classLocalDateTime(date, timeZone).date;
+  }
+}
 
 function useContextIds() {
   const { classId, sessionId } = useLocalSearchParams<{ classId?: string; sessionId?: string }>();
@@ -36,7 +64,7 @@ export function StudentSession() {
   const { uid, classId, sessionId } = useContextIds();
   if (!uid || !classId || !sessionId)
     return (
-      <Page title="Detail sesi" detail>
+      <Page title="Detail sesi" detail clean>
         <Card title="Sesi tidak ditemukan." />
       </Page>
     );
@@ -82,7 +110,7 @@ function SessionDetail({
   const present = attendance.data;
   const permit = permits.data;
   const permitBlocks = permit && permit.status !== 'rejected';
-  const canReview = !!present && current?.status === 'closed';
+  const canReview = !!present && (current?.status === 'open' || current?.status === 'closed');
   const reviews = useLive<Review>(
     uid,
     canReview ? ownRecord('reviews', uid, sessionId) : null,
@@ -106,45 +134,116 @@ function SessionDetail({
     }
   }
 
+  const statusInfo = current ? SessionStatusStyles[current.status] : null;
+  const startLocal =
+    current && context ? classLocalDateTime(current.startsAt.toDate(), context.timeZone) : null;
+  const endLocal =
+    current && context ? classLocalDateTime(current.endsAt.toDate(), context.timeZone) : null;
+
   return (
-    <Page title="Detail sesi" detail>
+    <Page
+      title={current && context ? undefined : 'Detail sesi'}
+      detail
+      clean
+      headerRight={
+        statusInfo && current ? (
+          <View
+            style={[
+              local.statusChip,
+              { backgroundColor: statusInfo.bg, borderColor: statusInfo.border },
+            ]}
+          >
+            <Text style={[local.statusChipText, { color: statusInfo.text }]}>
+              {current.status === 'open' ? `● ${statusInfo.label}` : statusInfo.label}
+            </Text>
+          </View>
+        ) : undefined
+      }
+    >
       <Feedback
         loading={loading}
         offline={offline}
         error={error}
         retry={() => setAttempt((n) => n + 1)}
       />
-      {!loading && !error && (!current || !context) && <Card title="Sesi tidak ditemukan." />}
-      {current && context && (
-        <Card title={current.moduleTitle}>
-          <Text style={styles.text}>{context.name}</Text>
-          <Text style={styles.text}>{current.room}</Text>
-          <Text style={styles.text}>
-            {formatDateTime(current.startsAt.toDate(), context.timeZone)} –{' '}
-            {formatDateTime(current.endsAt.toDate(), context.timeZone)}
-          </Text>
-          <Text style={styles.badge}>{SessionStatusStyles[current.status].label}</Text>
-          {present && (
-            <Text style={styles.text}>
-              Hadir · {formatDateTime(present.checkedInAt.toDate(), context.timeZone)}
+      {!loading && !error && (!current || !context) ? <Card title="Sesi tidak ditemukan." /> : null}
+      {current && context && startLocal && endLocal ? (
+        <View style={local.cleanStack}>
+          <View style={local.sessionHeadBlock}>
+            <Text style={local.sessionEyebrow}>{context.name.toUpperCase()}</Text>
+            <Text accessibilityRole="header" style={local.sessionHeading}>
+              {current.moduleTitle}
             </Text>
-          )}
-          {permit && <Text style={styles.text}>Izin · {permitStatuses[permit.status]}</Text>}
-          {!loading && !error && !present && !permitBlocks && current.status === 'open' && (
-            <AuthButton
-              title="Presensi sekarang"
-              onPress={checkIn}
-              busy={busy}
-              disabled={offline || !!notice}
-            />
-          )}
-          {!loading &&
+          </View>
+
+          <View style={local.infoBox}>
+            <View style={local.infoRow}>
+              <SymbolView
+                name={{ ios: 'calendar', android: 'calendar_today', web: 'calendar_today' }}
+                size={15}
+                tintColor={BrandColors.ink}
+              />
+              <Text style={local.infoText}>
+                {formatSessionDate(current.startsAt.toDate(), context.timeZone)}
+              </Text>
+            </View>
+            <View style={local.infoRow}>
+              <SymbolView
+                name={{ ios: 'clock', android: 'schedule', web: 'schedule' }}
+                size={15}
+                tintColor={BrandColors.ink}
+              />
+              <Text style={local.infoText}>
+                {startLocal.time} – {endLocal.time}
+              </Text>
+            </View>
+            <View style={local.infoRow}>
+              <SymbolView
+                name={{ ios: 'mappin.and.ellipse', android: 'place', web: 'place' }}
+                size={15}
+                tintColor={BrandColors.ink}
+              />
+              <Text style={local.infoText}>Ruang {current.room}</Text>
+            </View>
+          </View>
+
+          {present ? (
+            <View style={local.statusBox}>
+              <Text style={styles.badge}>✓ Hadir</Text>
+              <Text style={styles.text}>
+                Tercatat pada {formatDateTime(present.checkedInAt.toDate(), context.timeZone)}
+              </Text>
+            </View>
+          ) : null}
+
+          {permit ? (
+            <View style={local.statusBox}>
+              <Text style={permit.status === 'rejected' ? styles.badgeDanger : styles.badgeSoft}>
+                Izin · {permitStatuses[permit.status]}
+              </Text>
+              {permit.decisionNote ? (
+                <Text style={styles.muted}>Catatan asisten · {permit.decisionNote}</Text>
+              ) : null}
+            </View>
+          ) : null}
+
+          <View style={local.actionStack}>
+            {!loading && !error && !present && !permitBlocks && current.status === 'open' ? (
+              <AuthButton
+                title="Presensi sekarang"
+                onPress={checkIn}
+                busy={busy}
+                disabled={offline || !!notice}
+              />
+            ) : null}
+            {!loading &&
             !error &&
             !present &&
             !permit &&
-            (current.status === 'scheduled' || current.status === 'open') && (
+            (current.status === 'scheduled' || current.status === 'open') ? (
               <AuthButton
                 title="Ajukan izin"
+                variant="outline"
                 disabled={offline || busy || !!notice}
                 onPress={() =>
                   router.push({
@@ -153,33 +252,36 @@ function SessionDetail({
                   })
                 }
               />
-            )}
-          {canReview && !reviews.loading && !reviews.error && (
-            <AuthButton
-              title={reviews.data ? 'Lihat ulasan' : 'Tulis ulasan'}
-              onPress={() =>
-                router.push({ pathname: '/praktikan/ulasan', params: { classId, sessionId } })
-              }
-            />
-          )}
-          {canReview && reviews.error && (
+            ) : null}
+            {canReview && !reviews.loading && !reviews.error ? (
+              <AuthButton
+                title={reviews.data ? 'Lihat ulasan' : 'Tulis ulasan'}
+                variant={reviews.data ? 'outline' : 'primary'}
+                onPress={() =>
+                  router.push({ pathname: '/praktikan/ulasan', params: { classId, sessionId } })
+                }
+              />
+            ) : null}
+          </View>
+
+          {canReview && reviews.error ? (
             <Feedback {...reviews} retry={() => setAttempt((n) => n + 1)} />
-          )}
+          ) : null}
           {notice && !present ? (
             <Text accessibilityLiveRegion="polite" style={styles.text}>
               {notice}
             </Text>
           ) : null}
           <AuthError message={mutationErrorMessage} />
-        </Card>
-      )}
+        </View>
+      ) : null}
     </Page>
   );
 }
 
 export function StudentForm({ mode }: { mode: 'permit' | 'review' }) {
   const { uid, classId, sessionId } = useContextIds();
-  if (!uid || !classId || !sessionId) return <Page title="Sesi tidak ditemukan" detail />;
+  if (!uid || !classId || !sessionId) return <Page title="Sesi tidak ditemukan" detail clean />;
   return (
     <ParticipationForm
       key={JSON.stringify([uid, classId, sessionId, mode])}
@@ -247,44 +349,59 @@ function ParticipationForm({
   }
 
   return (
-    <Page title={review ? 'Ulasan sesi' : 'Ajukan izin'} detail>
+    <Page
+      title={review ? 'Ulasan sesi' : 'Ajukan izin'}
+      subtitle={
+        review
+          ? 'Bagikan pengalaman praktikum kamu untuk sesi ini.'
+          : 'Tuliskan alasan ketidakhadiran yang jelas untuk ditinjau asisten.'
+      }
+      headerRight={<DiagonalHatchOverlay inline size={38} />}
+      detail
+      clean
+    >
       <Feedback {...previous} retry={() => setAttempt((n) => n + 1)} />
-      {record && 'analysisStatus' in record && (
-        <Card title="Ulasan kamu">
-          <Text style={styles.text}>{record.text}</Text>
-          <Text style={styles.badge}>
-            {record.analysisStatus === 'succeeded' && record.sentiment
-              ? sentiments[record.sentiment]
-              : {
-                  pending: 'Menunggu analisis',
-                  processing: 'Sedang dianalisis',
-                  failed: 'Analisis gagal',
-                  succeeded: 'Hasil belum tersedia',
-                }[record.analysisStatus]}
+      {record && 'analysisStatus' in record ? (
+        <View style={local.cleanStack}>
+          <View style={local.reviewQuoteBox}>
+            <Text style={local.sessionEyebrow}>ULASAN KAMU</Text>
+            <Text style={styles.text}>{record.text}</Text>
+          </View>
+        </View>
+      ) : null}
+      {record && 'reason' in record ? (
+        <View style={local.cleanStack}>
+          <View style={local.reviewQuoteBox}>
+            <Text style={record.status === 'rejected' ? styles.badgeDanger : styles.badgeSoft}>
+              Izin · {permitStatuses[record.status]}
+            </Text>
+            <Text style={styles.text}>{record.reason}</Text>
+            {record.decisionNote ? (
+              <Text style={styles.muted}>Catatan asisten · {record.decisionNote}</Text>
+            ) : null}
+          </View>
+        </View>
+      ) : null}
+      {sent && !record ? (
+        <View style={local.reviewQuoteBox}>
+          <Text style={styles.heading}>
+            {review ? 'Ulasan tersimpan.' : 'Izin tersimpan. Menunggu keputusan.'}
           </Text>
-        </Card>
-      )}
-      {record && 'reason' in record && (
-        <Card title={permitStatuses[record.status]}>
-          <Text style={styles.text}>{record.reason}</Text>
-          {record.decisionNote && (
-            <Text style={styles.text}>Catatan asisten · {record.decisionNote}</Text>
-          )}
-        </Card>
-      )}
-      {sent && !record && (
-        <Card title={review ? 'Ulasan tersimpan.' : 'Izin tersimpan. Menunggu keputusan.'} />
-      )}
+        </View>
+      ) : null}
       {checkingReview &&
         !reviewAllowed &&
         (reviewAlreadySubmitted ? (
-          <Card title="Memuat ulasan…" />
+          <View style={local.reviewQuoteBox}>
+            <Text style={styles.heading}>Memuat ulasan…</Text>
+          </View>
         ) : reviewAccess.access ? (
-          <Card title="Ulasan belum tersedia">
+          <View style={local.reviewQuoteBox}>
+            <Text style={styles.heading}>Ulasan belum tersedia</Text>
             <Text style={styles.text}>
-              Ulasan dapat dikirim setelah sesi yang kamu hadiri selesai.
+              Ulasan dapat dikirim setelah kamu presensi pada sesi yang sudah dibuka.
             </Text>
-          </Card>
+          </View>
         ) : (
           <Feedback
             loading={!reviewAccess.error}
@@ -293,20 +410,23 @@ function ParticipationForm({
             retry={() => setAttempt((n) => n + 1)}
           />
         ))}
-      {showForm && (
-        <Card>
-          {review && (
-            <Text style={styles.text}>Hindari mencantumkan informasi pribadi dalam ulasan.</Text>
-          )}
+      {showForm ? (
+        <View style={local.cleanStack}>
+          {review ? (
+            <Text style={styles.muted}>Hindari mencantumkan informasi pribadi dalam ulasan.</Text>
+          ) : null}
           <AuthField
             label={review ? 'Ulasan' : 'Alasan ketidakhadiran'}
             value={text}
             onChangeText={setText}
+            placeholder={
+              review ? 'Tuliskan ulasan kamu minimal 10 karakter…' : 'Tuliskan alasan izin…'
+            }
             multiline
             maxLength={1000}
             editable={!busy}
           />
-          {text.trim().length < 10 && <Text style={styles.text}>Minimal 10 karakter.</Text>}
+          {text.trim().length < 10 ? <Text style={styles.muted}>Minimal 10 karakter.</Text> : null}
           <AuthError message={error} />
           <AuthButton
             title={review ? 'Kirim ulasan' : 'Kirim izin'}
@@ -314,88 +434,630 @@ function ParticipationForm({
             busy={busy}
             disabled={previous.offline || text.trim().length < 10}
           />
-        </Card>
-      )}
+        </View>
+      ) : null}
     </Page>
   );
 }
 
-export function StudentHistory() {
+type StudentClassSummary = {
+  classId: string;
+  name: string;
+  active: boolean;
+  presentCount: number;
+  permitCount: number;
+};
+
+/** Tab Kelas Saya — menampilkan kelas aktif & kelas terdahulu dengan ringkasan X Hadir · Y Izin. */
+export function StudentClasses() {
   const { user, role } = useAuth();
   if (!user || role !== 'praktikan') return null;
-  return <History key={user.uid} uid={user.uid} />;
+  return <StudentClassesContent key={user.uid} uid={user.uid} />;
 }
 
-function History({ uid }: { uid: string }) {
+function StudentClassesContent({ uid }: { uid: string }) {
   const [attempt, setAttempt] = useState(0);
-  const [pageSize, setPageSize] = useState(20);
+  const enrolled = useStudentClasses(uid);
   const filters = [{ field: 'studentUid', value: uid }];
   const attendances = useLive<Attendance[]>(
     uid,
-    { kind: 'list', path: 'attendances', filters, order: 'checkedInAt', pageSize },
+    { kind: 'list', path: 'attendances', filters, order: 'checkedInAt', pageSize: 200 },
     attempt,
   );
   const permits = useLive<Permit[]>(
     uid,
-    { kind: 'list', path: 'permits', filters, order: 'submittedAt', pageSize },
+    { kind: 'list', path: 'permits', filters, order: 'submittedAt', pageSize: 200 },
     attempt,
   );
-  const retry = () => setAttempt((n) => n + 1);
-  const reviewAccess = useReviewAccess(
-    attendances.offline ? [] : (attendances.data ?? []).map((item) => item.id),
-    attempt,
-  );
-  return (
-    <Page>
-      <Text accessibilityRole="header" style={styles.heading}>
-        Kehadiran
-      </Text>
-      <Feedback {...attendances} retry={retry} />
-      {attendances.data?.length === 0 && <Card title="Belum ada presensi." />}
-      {reviewAccess.error && (
-        <Feedback loading={false} offline={false} error={reviewAccess.error} retry={retry} />
-      )}
-      {attendances.data?.map((item) => (
-        <Card key={item.id} title={item.sessionSnapshot.moduleTitle}>
-          <Text style={styles.text}>{item.sessionSnapshot.className}</Text>
-          <Text style={styles.text}>
-            {formatDateTime(item.checkedInAt.toDate(), item.sessionSnapshot.timeZone)}
-          </Text>
-          {reviewAccess.access?.[item.id]?.state === 'submitted' ||
-          reviewAccess.access?.[item.id]?.state === 'ready' ? (
-            <AuthButton
-              title={
-                reviewAccess.access[item.id].state === 'submitted' ? 'Lihat ulasan' : 'Tulis ulasan'
-              }
-              onPress={() =>
-                router.push({
-                  pathname: '/praktikan/ulasan',
-                  params: { classId: item.classId, sessionId: item.sessionId },
-                })
-              }
-            />
-          ) : null}
-        </Card>
-      ))}
 
-      <Text accessibilityRole="header" style={styles.heading}>
-        Pengajuan izin
-      </Text>
-      <Feedback {...permits} retry={retry} />
-      {permits.data?.length === 0 && <Card title="Belum ada pengajuan izin." />}
-      {permits.data?.map((permit) => (
-        <Card key={permit.id} title={permit.sessionSnapshot.moduleTitle}>
-          <Text style={styles.text}>{permit.sessionSnapshot.className}</Text>
-          <Text style={styles.badge}>{permitStatuses[permit.status]}</Text>
-          <Text style={styles.text}>{permit.reason}</Text>
-          {permit.decisionNote && (
-            <Text style={styles.text}>Catatan asisten · {permit.decisionNote}</Text>
-          )}
+  const retry = () => {
+    enrolled.retry();
+    setAttempt((n) => n + 1);
+  };
+
+  const countMap = new Map<string, { present: number; permit: number; fallbackName: string }>();
+  for (const item of attendances.data ?? []) {
+    const prev = countMap.get(item.classId) ?? {
+      present: 0,
+      permit: 0,
+      fallbackName: item.sessionSnapshot.className,
+    };
+    prev.present += 1;
+    countMap.set(item.classId, prev);
+  }
+  for (const item of permits.data ?? []) {
+    const prev = countMap.get(item.classId) ?? {
+      present: 0,
+      permit: 0,
+      fallbackName: item.sessionSnapshot.className,
+    };
+    prev.permit += 1;
+    countMap.set(item.classId, prev);
+  }
+
+  const activeIds = new Set(enrolled.value.map((c) => c.id));
+  const activeClasses: StudentClassSummary[] = enrolled.value.map((cls) => {
+    const counts = countMap.get(cls.id);
+    return {
+      classId: cls.id,
+      name: cls.name,
+      active: true,
+      presentCount: counts?.present ?? 0,
+      permitCount: counts?.permit ?? 0,
+    };
+  });
+
+  const pastClasses: StudentClassSummary[] = [...countMap.entries()]
+    .filter(([classId]) => !activeIds.has(classId))
+    .map(([classId, counts]) => ({
+      classId,
+      name: counts.fallbackName,
+      active: false,
+      presentCount: counts.present,
+      permitCount: counts.permit,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  const loading = enrolled.loading || attendances.loading || permits.loading;
+  const offline = attendances.offline || permits.offline;
+  const error = enrolled.error ?? attendances.error ?? permits.error;
+
+  function openClassRecap(item: StudentClassSummary) {
+    router.push({
+      pathname: '/praktikan/kelas-detail',
+      params: { classId: item.classId, className: item.name },
+    });
+  }
+
+  return (
+    <Page tabScreen backdrop="topo">
+      <Feedback loading={loading} offline={offline} error={error} retry={retry} />
+
+      {!loading && !error && activeClasses.length === 0 && pastClasses.length === 0 ? (
+        <Card title="Belum ada kelas praktikum">
+          <Text style={styles.muted}>
+            Kelas yang kamu ikuti akan muncul di sini setelah asisten menambahkan NIM kamu.
+          </Text>
         </Card>
-      ))}
-      {(attendances.data?.length === pageSize || permits.data?.length === pageSize) && (
-        <AuthButton title="Tampilkan lebih banyak" onPress={() => setPageSize((n) => n + 20)} />
-      )}
+      ) : null}
+
+      {activeClasses.length > 0 ? (
+        <>
+          <Text style={local.eyebrow}>KELAS AKTIF ({activeClasses.length})</Text>
+          {activeClasses.map((item, idx) => (
+            <Pressable
+              key={item.classId}
+              accessibilityRole="button"
+              accessibilityLabel={`Buka rekap kelas ${item.name}`}
+              onPress={() => openClassRecap(item)}
+              style={({ pressed }) => [
+                local.classCard,
+                idx === 0 && local.classCardHighlight,
+                pressed && styles.pressed,
+              ]}
+            >
+              {idx === 0 ? <CornerDotAccent /> : null}
+              <View style={local.classInfo}>
+                <View style={local.classIndexBadge}>
+                  <Text style={local.classIndex}>{String(idx + 1).padStart(2, '0')}</Text>
+                </View>
+                <Text style={styles.heading}>{item.name}</Text>
+              </View>
+              <View style={local.badgeRow}>
+                <Text style={styles.badge}>{item.presentCount} Hadir</Text>
+                <Text style={styles.badgeSoft}>{item.permitCount} Izin</Text>
+              </View>
+            </Pressable>
+          ))}
+        </>
+      ) : null}
+
+      {pastClasses.length > 0 ? (
+        <>
+          <Text style={local.eyebrow}>KELAS TERDAHULU</Text>
+          {pastClasses.map((item) => (
+            <Pressable
+              key={item.classId}
+              accessibilityRole="button"
+              accessibilityLabel={`Buka rekap kelas terdahulu ${item.name}`}
+              onPress={() => openClassRecap(item)}
+              style={({ pressed }) => [local.pastClassCard, pressed && styles.pressed]}
+            >
+              <View style={local.classInfo}>
+                <Text style={styles.heading}>{item.name}</Text>
+                <Text style={styles.muted}>
+                  {item.presentCount} Hadir · {item.permitCount} Izin
+                </Text>
+              </View>
+            </Pressable>
+          ))}
+        </>
+      ) : null}
     </Page>
   );
 }
+
+type RecapEntry =
+  | { kind: 'attendance'; sortMs: number; item: Attendance }
+  | { kind: 'permit'; sortMs: number; item: Permit };
+
+/** Halaman Detail Rekap Kehadiran Kelas Praktikan — hanya menampilkan kartu sesi dengan catatan Hadir atau Izin. */
+export function StudentClassDetail() {
+  const { classId, className } = useLocalSearchParams<{ classId?: string; className?: string }>();
+  const { user, role } = useAuth();
+  if (!user || role !== 'praktikan' || !classId) {
+    return (
+      <Page title="Rekap kelas" detail>
+        <Card title="Kelas tidak ditemukan." />
+      </Page>
+    );
+  }
+  return (
+    <StudentClassDetailContent
+      key={`${user.uid}:${classId}`}
+      uid={user.uid}
+      classId={classId}
+      fallbackName={className}
+    />
+  );
+}
+
+function StudentClassDetailContent({
+  uid,
+  classId,
+  fallbackName,
+}: {
+  uid: string;
+  classId: string;
+  fallbackName?: string;
+}) {
+  const insets = useSafeAreaInsets();
+  const [attempt, setAttempt] = useState(0);
+  const filters = [{ field: 'studentUid', value: uid }];
+  const attendances = useLive<Attendance[]>(
+    uid,
+    { kind: 'list', path: 'attendances', filters, order: 'checkedInAt', pageSize: 200 },
+    attempt,
+  );
+  const permits = useLive<Permit[]>(
+    uid,
+    { kind: 'list', path: 'permits', filters, order: 'submittedAt', pageSize: 200 },
+    attempt,
+  );
+
+  const classAttendances = (attendances.data ?? []).filter((item) => item.classId === classId);
+  const classPermits = (permits.data ?? []).filter((item) => item.classId === classId);
+
+  const reviewAccess = useReviewAccess(
+    attendances.offline ? [] : classAttendances.map((item) => item.id),
+    attempt,
+  );
+
+  const entries: RecapEntry[] = [
+    ...classAttendances.map((item) => ({
+      kind: 'attendance' as const,
+      sortMs: item.checkedInAt.toMillis(),
+      item,
+    })),
+    ...classPermits.map((item) => ({
+      kind: 'permit' as const,
+      sortMs: item.submittedAt.toMillis(),
+      item,
+    })),
+  ].sort((a, b) => b.sortMs - a.sortMs);
+
+  const title =
+    fallbackName ??
+    classAttendances[0]?.sessionSnapshot.className ??
+    classPermits[0]?.sessionSnapshot.className ??
+    'Rekap kelas';
+
+  const loading = attendances.loading || permits.loading;
+  const offline = attendances.offline || permits.offline;
+  const error = attendances.error ?? permits.error;
+  const retry = () => setAttempt((n) => n + 1);
+
+  return (
+    <View style={styles.screen}>
+      <StatusBar style="light" />
+      <ScreenBackdrop variant="topo" />
+      <ConcentricArcOverlay />
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}
+      >
+        <View style={[local.darkHeader, { paddingTop: insets.top + 12 }]}>
+          <DarkGradientOverlay />
+          <DarkContourOverlay />
+          <View style={local.darkTopRow}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Kembali ke kelas saya"
+              onPress={() =>
+                router.canGoBack() ? router.back() : router.replace('/praktikan/kelas')
+              }
+              style={({ pressed }) => [local.backCircle, pressed && styles.pressed]}
+            >
+              <Image
+                source={ARROW_BACK_LIGHT}
+                contentFit="contain"
+                accessible={false}
+                style={local.backIcon}
+              />
+            </Pressable>
+            <View style={local.headerTag}>
+              <Text style={local.headerTagText}>Rekap saya</Text>
+            </View>
+          </View>
+          <View>
+            <Text style={local.headerEyebrow}>KELAS PRAKTIKUM</Text>
+            <Text accessibilityRole="header" style={local.headerTitle}>
+              {title}
+            </Text>
+          </View>
+        </View>
+
+        <View style={local.detailBody}>
+          <View style={local.summaryPill}>
+            <View style={local.summaryCol}>
+              <Text style={local.summaryValue}>{classAttendances.length}</Text>
+              <Text style={local.summaryLabel}>Hadir</Text>
+            </View>
+            <View style={local.summaryDivider} />
+            <View style={local.summaryCol}>
+              <Text style={local.summaryValue}>{classPermits.length}</Text>
+              <Text style={local.summaryLabel}>Izin</Text>
+            </View>
+          </View>
+
+          <Feedback loading={loading} offline={offline} error={error} retry={retry} />
+          {reviewAccess.error ? (
+            <Feedback loading={false} offline={false} error={reviewAccess.error} retry={retry} />
+          ) : null}
+
+          {!loading && !error && entries.length === 0 ? (
+            <Card title="Belum ada catatan kehadiran atau izin">
+              <Text style={styles.muted}>
+                Hanya sesi yang memiliki catatan hadir atau izin pada kelas ini yang akan muncul di
+                sini.
+              </Text>
+            </Card>
+          ) : null}
+
+          {entries.map((entry) =>
+            entry.kind === 'attendance' ? (
+              <Card key={`att-${entry.item.id}`}>
+                <View style={local.cardTopRow}>
+                  <Text style={[styles.heading, local.flexTitle]}>
+                    {entry.item.sessionSnapshot.moduleTitle}
+                  </Text>
+                  <Text style={styles.badge}>✓ Hadir</Text>
+                </View>
+                <Text style={styles.muted}>
+                  Tercatat{' '}
+                  {formatDateTime(
+                    entry.item.checkedInAt.toDate(),
+                    entry.item.sessionSnapshot.timeZone,
+                  )}
+                </Text>
+                {reviewAccess.access?.[entry.item.id]?.state === 'submitted' ||
+                reviewAccess.access?.[entry.item.id]?.state === 'ready' ? (
+                  <AuthButton
+                    title={
+                      reviewAccess.access[entry.item.id].state === 'submitted'
+                        ? 'Lihat ulasan'
+                        : 'Tulis ulasan'
+                    }
+                    variant={
+                      reviewAccess.access[entry.item.id].state === 'submitted'
+                        ? 'outline'
+                        : 'primary'
+                    }
+                    onPress={() =>
+                      router.push({
+                        pathname: '/praktikan/ulasan',
+                        params: {
+                          classId: entry.item.classId,
+                          sessionId: entry.item.sessionId,
+                        },
+                      })
+                    }
+                  />
+                ) : null}
+              </Card>
+            ) : (
+              <Card key={`per-${entry.item.id}`}>
+                <View style={local.cardTopRow}>
+                  <Text style={[styles.heading, local.flexTitle]}>
+                    {entry.item.sessionSnapshot.moduleTitle}
+                  </Text>
+                  <Text
+                    style={
+                      entry.item.status === 'rejected' ? styles.badgeDanger : styles.badgeSoft
+                    }
+                  >
+                    Izin · {permitStatuses[entry.item.status]}
+                  </Text>
+                </View>
+                <View style={local.reasonBox}>
+                  <Text style={styles.text}>{entry.item.reason}</Text>
+                </View>
+                {entry.item.decisionNote ? (
+                  <Text style={styles.muted}>Catatan asisten · {entry.item.decisionNote}</Text>
+                ) : null}
+              </Card>
+            ),
+          )}
+
+          {entries.length > 0 ? (
+            <Text style={local.footnote}>
+              Hanya sesi dengan catatan hadir atau izin yang ditampilkan.
+            </Text>
+          ) : null}
+        </View>
+      </ScrollView>
+    </View>
+  );
+}
+
+const local = StyleSheet.create({
+  statusChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    paddingHorizontal: 11,
+    paddingVertical: 5,
+  },
+  statusChipText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  cleanStack: {
+    gap: 14,
+  },
+  sessionHeadBlock: {
+    gap: 4,
+  },
+  sessionEyebrow: {
+    color: BrandColors.muted,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.7,
+  },
+  sessionHeading: {
+    color: BrandColors.ink,
+    fontSize: 24,
+    fontWeight: '800',
+    letterSpacing: -0.4,
+  },
+  infoBox: {
+    backgroundColor: BrandColors.pageBackground,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: BrandColors.line,
+    padding: 14,
+    gap: 10,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+  infoText: {
+    color: BrandColors.ink,
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 19,
+    flex: 1,
+  },
+  statusBox: {
+    backgroundColor: BrandColors.pageBackground,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: BrandColors.line,
+    padding: 14,
+    gap: 8,
+  },
+  actionStack: {
+    gap: 10,
+    marginTop: 4,
+  },
+  reviewQuoteBox: {
+    backgroundColor: BrandColors.pageBackground,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: BrandColors.line,
+    padding: 15,
+    gap: 8,
+  },
+  footnote: {
+    color: BrandColors.muted,
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: 'center',
+    paddingVertical: 6,
+  },
+  eyebrow: {
+    color: BrandColors.muted,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.7,
+    marginTop: 4,
+  },
+  classCard: {
+    backgroundColor: BrandColors.paper,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: BrandColors.line,
+    padding: 16,
+    gap: 10,
+    overflow: 'hidden',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.05,
+    shadowRadius: 14,
+    elevation: 2,
+  },
+  classCardHighlight: {
+    borderWidth: 1.5,
+    borderColor: BrandColors.ink,
+  },
+  pastClassCard: {
+    backgroundColor: BrandColors.soft,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: BrandColors.line,
+    padding: 15,
+    gap: 4,
+  },
+  classInfo: {
+    gap: 5,
+  },
+  classIndexBadge: {
+    alignSelf: 'flex-start',
+    backgroundColor: BrandColors.pageBackground,
+    borderWidth: 1,
+    borderColor: BrandColors.line,
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 3,
+  },
+  classIndex: {
+    color: BrandColors.ink,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  darkHeader: {
+    backgroundColor: BrandColors.ink,
+    paddingHorizontal: 18,
+    paddingBottom: 32,
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+    gap: 14,
+    overflow: 'hidden',
+  },
+  darkTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  backCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255, 255, 255, 0.14)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.22)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  backIcon: {
+    width: 17,
+    height: 17,
+  },
+  headerTag: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.14)',
+  },
+  headerTagText: {
+    color: BrandColors.paper,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+  headerEyebrow: {
+    color: 'rgba(255, 255, 255, 0.68)',
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 0.7,
+  },
+  headerTitle: {
+    color: BrandColors.paper,
+    fontSize: 22,
+    fontWeight: '800',
+    letterSpacing: -0.4,
+    marginTop: 2,
+  },
+  detailBody: {
+    width: '100%',
+    maxWidth: 680,
+    alignSelf: 'center',
+    paddingHorizontal: 16,
+    marginTop: -18,
+    gap: 12,
+  },
+  summaryPill: {
+    backgroundColor: BrandColors.paper,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: BrandColors.line,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    elevation: 2,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+  },
+  summaryCol: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  summaryValue: {
+    color: BrandColors.ink,
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  summaryLabel: {
+    color: BrandColors.muted,
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  summaryDivider: {
+    width: 1,
+    height: 28,
+    backgroundColor: BrandColors.line,
+  },
+  cardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  flexTitle: {
+    flex: 1,
+  },
+  reasonBox: {
+    backgroundColor: BrandColors.pageBackground,
+    borderRadius: 14,
+    padding: 12,
+  },
+});

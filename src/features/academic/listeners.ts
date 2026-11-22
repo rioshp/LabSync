@@ -496,3 +496,100 @@ export function subscribeSessionReviewSummary(
     onError,
   );
 }
+
+/** Memantau daftar kelas aktif yang diikuti praktikan melalui dokumen enrollments + classes. */
+export function subscribeStudentClasses(
+  uid: string,
+  onChange: Change<AcademicClass[]>,
+  onError: (error: unknown) => void,
+): Stop {
+  let active = true;
+  let rootStop: Stop = noop;
+  let rootReady = false;
+  const entries = new Map<string, { info: AcademicClass | null; ready: boolean; stop: Stop }>();
+
+  function stop() {
+    active = false;
+    rootStop();
+    rootStop = noop;
+    for (const entry of entries.values()) entry.stop();
+    entries.clear();
+  }
+
+  function fail(error: unknown) {
+    if (!active) return;
+    stop();
+    onError(error);
+  }
+
+  function publish() {
+    if (!active || !rootReady) return;
+    const allReady = [...entries.values()].every((entry) => entry.ready);
+    if (!allReady) return;
+    const classes = [...entries.values()]
+      .map((entry) => entry.info)
+      .filter((info): info is AcademicClass => info !== null && info.status === 'active')
+      .sort((a, b) => a.name.localeCompare(b.name));
+    onChange(classes);
+  }
+
+  async function start() {
+    try {
+      const { db } = await import('@/lib/firebase');
+      if (!active) return;
+
+      rootStop = onSnapshot(
+        query(
+          collection(db, 'enrollments'),
+          where('studentUid', '==', uid),
+          where('status', '==', 'active'),
+        ),
+        (snapshot) => {
+          if (!active) return;
+          const nextIds = new Set(
+            snapshot.docs
+              .map((item) => item.data().classId)
+              .filter((id): id is string => typeof id === 'string'),
+          );
+
+          for (const [id, entry] of entries) {
+            if (nextIds.has(id)) continue;
+            entry.stop();
+            entries.delete(id);
+          }
+
+          for (const classId of nextIds) {
+            if (entries.has(classId)) continue;
+            const entry = { info: null as AcademicClass | null, ready: false, stop: noop };
+            entries.set(classId, entry);
+            entry.stop = onSnapshot(
+              doc(db, 'classes', classId),
+              (classSnap) => {
+                if (!active || entries.get(classId) !== entry) return;
+                try {
+                  entry.info = classSnap.exists()
+                    ? parseAcademicClass(classSnap.id, classSnap.data())
+                    : null;
+                  entry.ready = true;
+                  publish();
+                } catch (error) {
+                  fail(error);
+                }
+              },
+              fail,
+            );
+          }
+
+          rootReady = true;
+          publish();
+        },
+        fail,
+      );
+    } catch (error) {
+      fail(error);
+    }
+  }
+
+  void start();
+  return stop;
+}

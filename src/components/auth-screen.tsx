@@ -1,10 +1,9 @@
 import { Image } from 'expo-image';
-import { SymbolView } from 'expo-symbols';
-import { useEffect, useState, type ReactNode } from 'react';
+import { StatusBar } from 'expo-status-bar';
+import { SymbolView, type SFSymbol } from 'expo-symbols';
+import { useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
-  Animated,
-  Easing,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -17,150 +16,210 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import {
+  DarkGradientOverlay,
+  DiagonalHatchOverlay,
+  LabSyncLockup,
+  ScreenBackdrop,
+} from '@/components/labsync-brand';
 import { BrandColors } from '@/constants/theme';
+
+const AUTH_WAVE = require('../../assets/images/auth-wave.svg');
+const DARK_CONTOUR = require('../../assets/images/dark-contour.svg');
+const ARROW_BACK = require('../../assets/images/arrow-back.svg');
+
+export type FieldIconName = 'mail' | 'lock' | 'user' | 'id' | 'search' | 'pin' | 'calendar' | 'clock';
+
+const FIELD_ICONS: Record<FieldIconName, { ios: SFSymbol; android: string; web: string }> = {
+  mail: { ios: 'envelope', android: 'mail_outline', web: 'mail_outline' },
+  lock: { ios: 'lock', android: 'lock_outline', web: 'lock_outline' },
+  user: { ios: 'person', android: 'person_outline', web: 'person_outline' },
+  id: { ios: 'creditcard', android: 'badge', web: 'badge' },
+  search: { ios: 'magnifyingglass', android: 'search', web: 'search' },
+  pin: { ios: 'mappin.and.ellipse', android: 'location_on', web: 'location_on' },
+  calendar: { ios: 'calendar', android: 'calendar_today', web: 'calendar_today' },
+  clock: { ios: 'clock', android: 'schedule', web: 'schedule' },
+};
 
 export function AuthScreen({
   title,
   description,
   children,
-  intro = false,
+  header = 'clean',
+  stepLabel,
+  dangerBadge = false,
+  onBack,
+  showHatch = false,
 }: {
   title: string;
   description?: string;
   children: ReactNode;
-  intro?: boolean;
+  header?: 'wave' | 'clean';
+  stepLabel?: string;
+  dangerBadge?: boolean;
+  onBack?: () => void;
+  showHatch?: boolean;
 }) {
   const insets = useSafeAreaInsets();
-  const [showIntro, setShowIntro] = useState(intro);
-  const [introProgress] = useState(() => new Animated.Value(intro ? 0 : 1));
-
-  useEffect(() => {
-    if (!intro) return;
-    introProgress.setValue(0);
-    const animation = Animated.timing(introProgress, {
-      toValue: 1,
-      duration: 950,
-      delay: 550,
-      easing: Easing.inOut(Easing.cubic),
-      useNativeDriver: true,
-    });
-    animation.start(({ finished }) => {
-      if (finished) setShowIntro(false);
-    });
-    return () => animation.stop();
-  }, [intro, introProgress]);
+  const isWave = header === 'wave';
 
   return (
     <KeyboardAvoidingView
-      style={styles.screen}
+      style={[styles.screen, isWave ? styles.screenSoft : styles.screenClean]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <Animated.View
-        style={[styles.page, { opacity: introProgress }]}
-        pointerEvents={showIntro ? 'none' : 'auto'}
-        accessibilityElementsHidden={showIntro}
-        importantForAccessibility={showIntro ? 'no-hide-descendants' : 'auto'}
+      <StatusBar style={isWave ? 'light' : 'dark'} />
+      <ScreenBackdrop variant={isWave ? 'waves' : 'blobs'} />
+      <ScrollView
+        style={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: insets.bottom + 28 },
+        ]}
       >
-        <View
-          pointerEvents="none"
-          accessible={false}
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-          style={styles.background}
-        >
-          <View style={styles.backgroundTop} />
-          <View style={styles.backgroundSide} />
-          <View style={styles.backgroundBottom} />
-          <View style={styles.backgroundCorner} />
-          <View style={styles.backgroundMiddle} />
-          <View style={styles.backgroundTopStep} />
-          <View style={styles.backgroundTopTile} />
-          <View style={styles.backgroundLeftTile} />
-          <View style={styles.backgroundBottomStep} />
-          <View style={styles.backgroundBottomTile} />
-        </View>
-        <ScrollView
-          style={styles.scroll}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={[
-            styles.content,
-            { paddingTop: insets.top + 78, paddingBottom: insets.bottom + 32 },
-          ]}
-        >
-          <View style={styles.hero}>
-            <Text accessibilityRole="header" style={styles.title}>
-              {title}
-            </Text>
-            {description && <Text style={styles.description}>{description}</Text>}
-          </View>
-          {children}
-        </ScrollView>
-      </Animated.View>
-      {showIntro && (
-        <Animated.View
-          style={[
-            styles.introScreen,
-            { opacity: introProgress.interpolate({ inputRange: [0, 1], outputRange: [1, 0] }) },
-          ]}
-          accessibilityLabel="Memuat presensi praktikum"
-          accessibilityRole="progressbar"
-        >
-          <View style={styles.introMark}>
-            {[0, 1, 2, 3].map((block) => (
-              <Animated.View
-                key={block}
-                style={[
-                  styles.introBlock,
-                  block === 1 && styles.introBlockLight,
-                  block === 2 && styles.introBlockSoft,
-                  {
-                    transform: [
-                      {
-                        translateX: introProgress.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [0, block % 2 === 0 ? -52 : 52],
-                        }),
-                      },
-                      {
-                        translateY: introProgress.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [0, block < 2 ? -52 : 52],
-                        }),
-                      },
-                    ],
-                  },
-                ]}
+        {isWave ? (
+          <View style={styles.waveWrapper}>
+            <View style={[styles.waveHeader, { paddingTop: insets.top + 14 }]}>
+              <DarkGradientOverlay />
+              <Image
+                source={DARK_CONTOUR}
+                contentFit="contain"
+                pointerEvents="none"
+                accessible={false}
+                style={styles.contourImage}
               />
-            ))}
+              <View style={styles.waveInner}>
+                <LabSyncLockup size={28} inverted />
+                <View style={styles.waveHero}>
+                  <Text accessibilityRole="header" style={styles.waveTitle}>
+                    {title}
+                  </Text>
+                  {description ? <Text style={styles.waveDescription}>{description}</Text> : null}
+                </View>
+              </View>
+            </View>
+            <Image
+              source={AUTH_WAVE}
+              contentFit="fill"
+              pointerEvents="none"
+              accessible={false}
+              style={styles.waveSvg}
+            />
           </View>
-        </Animated.View>
-      )}
+        ) : (
+          <View style={[styles.cleanHeader, { paddingTop: insets.top + 14 }]}>
+            <View style={styles.cleanTopRow}>
+              {onBack ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Kembali"
+                  onPress={onBack}
+                  style={({ pressed }) => [styles.backCircle, pressed && styles.pressed]}
+                >
+                  <Image
+                    source={ARROW_BACK}
+                    contentFit="contain"
+                    accessible={false}
+                    style={styles.backIcon}
+                  />
+                </Pressable>
+              ) : (
+                <LabSyncLockup size={26} />
+              )}
+              {showHatch ? (
+                <DiagonalHatchOverlay inline size={42} />
+              ) : stepLabel ? (
+                <Text style={styles.stepLabelText}>{stepLabel}</Text>
+              ) : null}
+            </View>
+            {dangerBadge ? (
+              <View style={styles.dangerBadge} accessible={false}>
+                <SymbolView
+                  name={{
+                    ios: 'exclamationmark.triangle',
+                    android: 'warning_amber',
+                    web: 'warning_amber',
+                  }}
+                  size={22}
+                  tintColor={BrandColors.danger}
+                />
+              </View>
+            ) : null}
+            <View style={styles.cleanHero}>
+              <Text accessibilityRole="header" style={styles.cleanTitle}>
+                {title}
+              </Text>
+              {description ? <Text style={styles.cleanDescription}>{description}</Text> : null}
+            </View>
+          </View>
+        )}
+
+        <View style={[styles.body, isWave && styles.bodyWave]}>{children}</View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
 export function AuthField({
   label,
+  labelRight,
+  icon,
   passwordToggle = false,
   secureTextEntry,
   style,
+  onFocus,
+  onBlur,
   ...props
-}: TextInputProps & { label: string; passwordToggle?: boolean }) {
+}: TextInputProps & {
+  label: string;
+  labelRight?: ReactNode;
+  icon?: FieldIconName;
+  passwordToggle?: boolean;
+}) {
   const [passwordVisible, setPasswordVisible] = useState(false);
+  const [focused, setFocused] = useState(false);
   const visibilityLabel = passwordVisible ? 'Sembunyikan password' : 'Tampilkan password';
 
   return (
     <View style={styles.field}>
-      <Text style={styles.label}>{label}</Text>
+      <View style={styles.labelRow}>
+        <Text style={styles.label}>{label}</Text>
+        {labelRight}
+      </View>
       <View style={styles.inputWrap}>
+        {icon ? (
+          <View pointerEvents="none" accessible={false} style={styles.leadingIcon}>
+            <SymbolView
+              name={FIELD_ICONS[icon] as never}
+              tintColor={focused ? BrandColors.ink : BrandColors.muted}
+              size={17}
+            />
+          </View>
+        ) : null}
         <TextInput
           accessibilityLabel={label}
           placeholderTextColor={BrandColors.muted}
           {...props}
+          onFocus={(event) => {
+            setFocused(true);
+            onFocus?.(event);
+          }}
+          onBlur={(event) => {
+            setFocused(false);
+            onBlur?.(event);
+          }}
           secureTextEntry={passwordToggle ? !passwordVisible : secureTextEntry}
-          style={[styles.input, passwordToggle && styles.inputWithToggle, style]}
+          style={[
+            styles.input,
+            icon && styles.inputWithIcon,
+            focused && styles.inputFocused,
+            passwordToggle && styles.inputWithToggle,
+            style,
+          ]}
         />
-        {passwordToggle && (
+        {passwordToggle ? (
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={visibilityLabel}
@@ -175,11 +234,11 @@ export function AuthField({
                 android: passwordVisible ? 'visibility_off' : 'visibility',
                 web: passwordVisible ? 'visibility_off' : 'visibility',
               }}
-              tintColor={BrandColors.forest}
-              size={22}
+              tintColor={BrandColors.muted}
+              size={19}
             />
           </Pressable>
-        )}
+        ) : null}
       </View>
     </View>
   );
@@ -196,9 +255,14 @@ export function AuthButton({
   onPress: () => void;
   busy?: boolean;
   disabled?: boolean;
-  variant?: 'primary' | 'google';
+  variant?: 'primary' | 'outline' | 'danger' | 'soft' | 'google';
 }) {
   const isGoogle = variant === 'google';
+  const isPrimary = variant === 'primary';
+  const isDanger = variant === 'danger';
+  const isOutline = variant === 'outline';
+  const isSoft = variant === 'soft';
+
   return (
     <Pressable
       accessibilityRole="button"
@@ -208,24 +272,46 @@ export function AuthButton({
       onPress={onPress}
       style={({ pressed }) => [
         styles.submit,
+        isOutline && styles.outlineButton,
+        isDanger && styles.dangerButton,
+        isSoft && styles.softButton,
         isGoogle && styles.googleButton,
-        (busy || disabled) && (isGoogle ? styles.disabledGoogleButton : styles.disabledSubmit),
+        (busy || disabled) && (isPrimary ? styles.disabledSubmit : styles.disabledSecondary),
         pressed && styles.pressed,
       ]}
     >
       {busy ? (
-        <ActivityIndicator color={isGoogle ? '#1F1F1F' : BrandColors.paper} />
+        <ActivityIndicator color={isPrimary ? BrandColors.paper : BrandColors.ink} />
       ) : (
-        <>
-          {isGoogle && (
+        <View style={styles.buttonRow}>
+          {isGoogle ? (
             <Image
               source={require('../../assets/images/google-logo.svg')}
               accessible={false}
               style={styles.googleLogo}
             />
-          )}
-          <Text style={[styles.submitText, isGoogle && styles.googleButtonText]}>{title}</Text>
-        </>
+          ) : null}
+          {isDanger ? (
+            <SymbolView
+              name={{
+                ios: 'exclamationmark.triangle',
+                android: 'warning_amber',
+                web: 'warning_amber',
+              }}
+              size={15}
+              tintColor={BrandColors.danger}
+            />
+          ) : null}
+          <Text
+            style={[
+              styles.submitText,
+              !isPrimary && styles.darkButtonText,
+              isGoogle && styles.googleButtonText,
+            ]}
+          >
+            {title}
+          </Text>
+        </View>
       )}
     </Pressable>
   );
@@ -233,246 +319,274 @@ export function AuthButton({
 
 export function AuthError({ message }: { message: string | null }) {
   return message ? (
-    <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.error}>
-      {message}
-    </Text>
+    <View style={styles.errorBox}>
+      <Text accessibilityRole="alert" accessibilityLiveRegion="polite" style={styles.error}>
+        {message}
+      </Text>
+    </View>
   ) : null;
 }
 
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
+  },
+  screenSoft: {
+    backgroundColor: BrandColors.pageBackground,
+  },
+  screenClean: {
     backgroundColor: BrandColors.paper,
-  },
-  page: {
-    flex: 1,
-  },
-  introScreen: {
-    ...StyleSheet.absoluteFill,
-    zIndex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: BrandColors.paper,
-  },
-  introMark: {
-    width: 100,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  introBlock: {
-    width: 46,
-    height: 46,
-    backgroundColor: BrandColors.forest,
-  },
-  introBlockLight: {
-    backgroundColor: BrandColors.sageLight,
-  },
-  introBlockSoft: {
-    backgroundColor: BrandColors.forestSoft,
-  },
-  background: {
-    ...StyleSheet.absoluteFill,
-    overflow: 'hidden',
-  },
-  backgroundTop: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    width: 112,
-    height: 168,
-    backgroundColor: BrandColors.sageLight,
-    opacity: 0.85,
-  },
-  backgroundSide: {
-    position: 'absolute',
-    top: 176,
-    right: 0,
-    width: 48,
-    height: 48,
-    backgroundColor: BrandColors.forestSoft,
-    opacity: 0.12,
-  },
-  backgroundBottom: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    width: 112,
-    height: 168,
-    backgroundColor: BrandColors.sageLight,
-    opacity: 0.75,
-  },
-  backgroundCorner: {
-    position: 'absolute',
-    bottom: 176,
-    left: 0,
-    width: 48,
-    height: 48,
-    backgroundColor: BrandColors.forestSoft,
-    opacity: 0.12,
-  },
-  backgroundMiddle: {
-    position: 'absolute',
-    top: '48%',
-    right: 0,
-    width: 48,
-    height: 104,
-    backgroundColor: BrandColors.sageLight,
-    opacity: 0.7,
-  },
-  backgroundTopStep: {
-    position: 'absolute',
-    top: 0,
-    right: 120,
-    width: 48,
-    height: 48,
-    backgroundColor: BrandColors.forest,
-    opacity: 0.1,
-  },
-  backgroundTopTile: {
-    position: 'absolute',
-    top: 56,
-    right: 120,
-    width: 48,
-    height: 48,
-    backgroundColor: BrandColors.softGreen,
-    opacity: 0.85,
-  },
-  backgroundLeftTile: {
-    position: 'absolute',
-    top: '47%',
-    left: 0,
-    width: 32,
-    height: 48,
-    backgroundColor: BrandColors.sage,
-    opacity: 0.18,
-  },
-  backgroundBottomStep: {
-    position: 'absolute',
-    bottom: 0,
-    left: 120,
-    width: 48,
-    height: 48,
-    backgroundColor: BrandColors.forest,
-    opacity: 0.1,
-  },
-  backgroundBottomTile: {
-    position: 'absolute',
-    bottom: 56,
-    left: 120,
-    width: 48,
-    height: 48,
-    backgroundColor: BrandColors.softGreen,
-    opacity: 0.85,
   },
   scroll: {
     flex: 1,
   },
-  content: {
+  scrollContent: {
     flexGrow: 1,
+  },
+  waveWrapper: {
     width: '100%',
-    maxWidth: 560,
+  },
+  waveHeader: {
+    backgroundColor: BrandColors.ink,
+    paddingHorizontal: 20,
+    paddingBottom: 14,
+    overflow: 'hidden',
+  },
+  contourImage: {
+    position: 'absolute',
+    top: -48,
+    right: -56,
+    width: 240,
+    height: 240,
+  },
+  waveSvg: {
+    width: '100%',
+    height: 30,
+    marginTop: -1,
+  },
+  waveInner: {
+    width: '100%',
+    maxWidth: 520,
     alignSelf: 'center',
-    paddingHorizontal: 24,
-    gap: 28,
-  },
-  hero: {
     gap: 16,
-    paddingBottom: 8,
   },
-  title: {
-    color: BrandColors.forestDeep,
-    fontSize: 38,
-    lineHeight: 44,
+  waveHero: {
+    gap: 6,
+  },
+  waveTitle: {
+    color: BrandColors.paper,
+    fontSize: 27,
+    lineHeight: 31,
     fontWeight: '800',
+    letterSpacing: -0.6,
   },
-  description: {
-    color: BrandColors.forestSoft,
-    fontSize: 14,
-    lineHeight: 21,
+  waveDescription: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 13,
+    lineHeight: 19,
   },
-  submit: {
-    minHeight: 56,
-    padding: 16,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: BrandColors.forest,
+  cleanHeader: {
+    width: '100%',
+    maxWidth: 520,
+    alignSelf: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 18,
+    gap: 20,
   },
-  googleButton: {
+  cleanTopRow: {
     flexDirection: 'row',
-    gap: 12,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  backCircle: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: BrandColors.paper,
     borderWidth: 1,
-    borderColor: '#747775',
+    borderColor: BrandColors.line,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  disabledGoogleButton: {
-    opacity: 0.6,
+  backIcon: {
+    width: 17,
+    height: 17,
   },
-  googleLogo: {
-    width: 18,
-    height: 18,
+  stepLabelText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: BrandColors.muted,
+    letterSpacing: 0.6,
   },
-  googleButtonText: {
-    color: '#1F1F1F',
+  dangerBadge: {
+    width: 50,
+    height: 50,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: BrandColors.danger,
+    backgroundColor: BrandColors.dangerSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cleanHero: {
+    gap: 6,
+  },
+  cleanTitle: {
+    color: BrandColors.ink,
+    fontSize: 25,
+    lineHeight: 30,
+    fontWeight: '800',
+    letterSpacing: -0.5,
+  },
+  cleanDescription: {
+    color: BrandColors.muted,
+    fontSize: 13,
+    lineHeight: 20,
+  },
+  body: {
+    width: '100%',
+    maxWidth: 520,
+    alignSelf: 'center',
+    paddingHorizontal: 20,
+    gap: 13,
+  },
+  bodyWave: {
+    marginTop: 6,
+  },
+  submit: {
+    minHeight: 48,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: BrandColors.ink,
+    borderWidth: 1.5,
+    borderColor: BrandColors.ink,
+  },
+  outlineButton: {
+    backgroundColor: BrandColors.paper,
+    borderColor: BrandColors.ink,
+  },
+  dangerButton: {
+    backgroundColor: BrandColors.paper,
+    borderColor: BrandColors.danger,
+  },
+  softButton: {
+    backgroundColor: BrandColors.soft,
+    borderColor: BrandColors.line,
+  },
+  googleButton: {
+    backgroundColor: BrandColors.paper,
+    borderColor: BrandColors.inputBorder,
   },
   disabledSubmit: {
-    backgroundColor: BrandColors.muted,
+    backgroundColor: BrandColors.neutralMid,
+    borderColor: BrandColors.neutralMid,
+  },
+  disabledSecondary: {
+    opacity: 0.55,
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  googleLogo: {
+    width: 17,
+    height: 17,
   },
   submitText: {
     color: BrandColors.paper,
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  darkButtonText: {
+    color: BrandColors.ink,
+  },
+  googleButtonText: {
+    color: BrandColors.ink,
+    fontWeight: '800',
   },
   pressed: {
-    opacity: 0.75,
+    opacity: 0.78,
   },
   form: {
-    gap: 18,
-  },
-  field: {
     gap: 12,
   },
+  field: {
+    gap: 6,
+  },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
   label: {
-    color: BrandColors.forestDeep,
-    fontSize: 16,
+    color: BrandColors.ink,
+    fontSize: 12.5,
     fontWeight: '700',
   },
   inputWrap: {
     justifyContent: 'center',
   },
+  leadingIcon: {
+    position: 'absolute',
+    start: 13,
+    zIndex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  inputWithIcon: {
+    paddingStart: 40,
+  },
   inputWithToggle: {
-    paddingEnd: 54,
+    paddingEnd: 46,
   },
   passwordToggle: {
     position: 'absolute',
-    end: 4,
-    minWidth: 44,
-    minHeight: 44,
+    end: 3,
+    minWidth: 42,
+    minHeight: 42,
     alignItems: 'center',
     justifyContent: 'center',
   },
   input: {
-    minHeight: 56,
-    padding: 14,
-    borderWidth: 2,
+    minHeight: 48,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    borderWidth: 1.5,
     borderRadius: 14,
-    borderColor: BrandColors.line,
+    borderColor: BrandColors.inputBorder,
     backgroundColor: BrandColors.paper,
     color: BrandColors.ink,
-    fontSize: 16,
+    fontSize: 14,
+  },
+  inputFocused: {
+    borderColor: BrandColors.ink,
   },
   link: {
-    padding: 12,
-    color: BrandColors.forest,
-    fontSize: 14,
+    padding: 10,
+    color: BrandColors.ink,
+    fontSize: 13,
     fontWeight: '700',
     textAlign: 'center',
   },
+  errorBox: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: BrandColors.danger,
+    backgroundColor: BrandColors.dangerSoft,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
   error: {
     color: BrandColors.danger,
-    fontSize: 14,
-    lineHeight: 21,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '600',
   },
 });
 

@@ -50,14 +50,28 @@ function rootScreens(session) {
 function tabs(role) {
   const Tabs = { Screen: 'tab', Protected: 'protected' };
   const Layout = loadTypeScript('src/app/(tabs)/_layout.tsx', {
-    'expo-router': { Tabs },
+    'expo-router': { Tabs, usePathname: () => '/jadwal' },
+    'expo-status-bar': { StatusBar: 'status-bar' },
     'expo-symbols': { SymbolView: 'symbol' },
-    'react-native': { Text: 'text' },
+    'react-native': {
+      Pressable: 'pressable',
+      StyleSheet: { create: (s) => s },
+      Text: 'text',
+      View: 'view',
+    },
     '@/hooks/useAuth': { useAuth: () => ({ role }) },
+    '@/components/labsync-brand': {
+      CsGraphLogo: 'cs-graph-logo',
+      ScreenBackdrop: 'screen-backdrop',
+    },
     '@/components/logout-button': { LogoutButton: 'logout-button' },
     '@/constants/theme': { BrandColors: {} },
   }).default;
-  return collectScreens(Layout().props.children, Tabs.Screen);
+  const tree = Layout();
+  const tabsNode = Array.isArray(tree.props.children)
+    ? tree.props.children.find((child) => child?.type === Tabs)
+    : tree;
+  return collectScreens(tabsNode.props.children, Tabs.Screen);
 }
 
 test('the root stack protects tabs and details by account phase and role', () => {
@@ -75,6 +89,7 @@ test('the root stack protects tabs and details by account phase and role', () =>
   assert.deepEqual(rootScreens({ user, phase: 'active', role: 'praktikan' }), [
     'index',
     '(tabs)',
+    'praktikan/kelas-detail',
     'praktikan/presensi',
     'praktikan/ajukan-izin',
     'praktikan/ulasan',
@@ -88,7 +103,7 @@ test('tabs expose the correct screens for each role', () => {
   );
   assert.deepEqual(
     tabs('praktikan').map((screen) => screen.props.name),
-    ['jadwal', 'praktikan/riwayat', 'profil'],
+    ['jadwal', 'praktikan/kelas', 'profil'],
   );
 });
 
@@ -120,12 +135,18 @@ test('Expo Router resolves actual screen files without obsolete demo routes', ()
     assert.equal(route.name, 'praktikan/' + detail);
     assert.deepEqual(route.params, { classId: 'kelas1', sessionId: 'sesi1' });
   }
-  for (const tab of ['asisten/izin', 'praktikan/riwayat', 'jadwal', 'profil']) {
+  for (const tab of ['asisten/izin', 'praktikan/kelas', 'jadwal', 'profil']) {
     assert.deepEqual(
       routeChain('/' + tab).map(({ name }) => name),
       ['(tabs)', tab],
     );
   }
+  const studentClassDetail = routeChain('/praktikan/kelas-detail?classId=basis-data');
+  assert.deepEqual(
+    studentClassDetail.map(({ name }) => name),
+    ['praktikan/kelas-detail'],
+  );
+  assert.deepEqual(studentClassDetail.at(-1).params, { classId: 'basis-data' });
   assert.deepEqual(
     routeChain('/asisten/praktikum').map(({ name }) => name),
     ['(tabs)', 'asisten/praktikum'],
@@ -246,6 +267,10 @@ test('session detail opens the selected tab and loads data only for that tab', (
     className: 'Basis Data B',
     module: 'Kueri SQL',
     room: 'Lab',
+    startsAt: { toDate: () => new Date(0) },
+    date: '2026-11-22',
+    startTime: '09:00',
+    endTime: '11:00',
     timeZone: 'Asia/Jakarta',
     status: 'closed',
   };
@@ -253,6 +278,10 @@ test('session detail opens the selected tab and loads data only for that tab', (
   const { default: AssistantSessionRoute } = loadTypeScript(
     'src/features/academic/assistant-session.tsx',
     {
+      'expo-image': { Image: 'image' },
+      'expo-status-bar': { StatusBar: 'status-bar' },
+      'expo-symbols': { SymbolView: 'symbol' },
+      '../../../assets/images/arrow-back-light.svg': 'arrow-back-light',
       'expo-router': {
         router: {
           canGoBack: () => true,
@@ -287,6 +316,13 @@ test('session detail opens the selected tab and loads data only for that tab', (
       },
       'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
       '@/components/auth-screen': { AuthButton: 'auth-button' },
+      '@/components/labsync-brand': {
+        BottomSheetModal: 'bottom-sheet-modal',
+        DarkContourOverlay: 'dark-contour',
+        DarkGradientOverlay: 'dark-gradient',
+        DiagonalHatchOverlay: 'diagonal-hatch',
+        ScreenBackdrop: 'screen-backdrop',
+      },
       '@/constants/theme': {
         BrandColors: {},
         SessionStatusStyles: { closed: { label: 'Selesai' } },
@@ -345,7 +381,7 @@ test('session detail opens the selected tab and loads data only for that tab', (
   initialSection = 'ulasan';
   const reviews = tree();
   assert.ok(includesLabel(reviews, 'Sentimen ulasan mahasiswa'));
-  reviews.find((node) => node.props.children?.props?.children === '‹ Kembali').props.onPress();
+  reviews.find((node) => node.props.accessibilityLabel === 'Kembali').props.onPress();
   assert.equal(backed, true);
 });
 
@@ -363,12 +399,37 @@ test('an enrolled student can check in before attendance or permit documents exi
   };
   const reads = [];
   const { StudentSession } = loadTypeScript('src/features/participation/student.tsx', {
+    'expo-image': { Image: 'image' },
     'expo-router': { useLocalSearchParams: () => ({ classId: 'kelas-a', sessionId: 'sesi-a' }) },
+    'expo-status-bar': { StatusBar: 'status-bar' },
+    'expo-symbols': { SymbolView: 'symbol' },
+    '../../../assets/images/arrow-back-light.svg': 'arrow-back-light',
     react: { useState: (initial) => [initial, () => {}], useRef: (current) => ({ current }) },
-    'react-native': { Text: 'text' },
-    '@/features/academic/time': { formatDateTime: () => '09.00' },
+    'react-native': {
+      Pressable: 'button',
+      ScrollView: 'scroll',
+      StyleSheet: { create: (s) => s },
+      Text: 'text',
+      View: 'view',
+    },
+    'react-native-safe-area-context': { useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) },
+    '@/features/academic/time': {
+      classLocalDateTime: () => ({ date: '2026-11-22', time: '09:00' }),
+      formatDateTime: () => '09.00',
+    },
+    '@/features/academic/useAcademic': {
+      useStudentClasses: () => ({ value: [], loading: false, error: null, retry: () => {} }),
+    },
     '@/components/auth-screen': { AuthButton: 'auth-button', AuthError: 'auth-error' },
-    '@/constants/theme': { SessionStatusStyles: { open: { label: 'Dibuka' } } },
+    '@/components/labsync-brand': {
+      ConcentricArcOverlay: 'arc',
+      CornerDotAccent: 'corner-dots',
+      DarkContourOverlay: 'dark-contour',
+      DarkGradientOverlay: 'dark-gradient',
+      DiagonalHatchOverlay: 'diagonal-hatch',
+      ScreenBackdrop: 'screen-backdrop',
+    },
+    '@/constants/theme': { BrandColors: {}, SessionStatusStyles: { open: { label: 'Dibuka' } } },
     '@/hooks/useAuth': { useAuth: () => ({ user: { uid: 'praktikan-a' }, role: 'praktikan' }) },
     '@/lib/mutations': {},
     './data': {

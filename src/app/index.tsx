@@ -1,5 +1,5 @@
 import type { AuthCredential } from '@react-native-firebase/auth';
-import { Link, Redirect } from 'expo-router';
+import { Redirect, router } from 'expo-router';
 import { useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -69,6 +69,13 @@ export default function LoginScreen() {
     }
   }
 
+  function returnToLogin() {
+    if (busy) return;
+    setMode('login');
+    setError(null);
+    setNotice('');
+  }
+
   if (!busy && phase === 'active') return <Redirect href="/jadwal" />;
   if (!busy && user && (phase === 'verify' || phase === 'onboarding' || phase === 'disabled')) {
     return <AccountSetup key={user.uid + phase} />;
@@ -79,54 +86,81 @@ export default function LoginScreen() {
   return (
     <AuthScreen
       key={mode}
-      intro={!resetting}
-      title={resetting ? 'Atur ulang password.' : 'Selamat datang'}
-      description={resetting ? 'Masukkan email akun praktikum kamu.' : undefined}
+      header={resetting ? 'clean' : 'wave'}
+      onBack={resetting ? returnToLogin : undefined}
+      showHatch={resetting}
+      title={resetting ? 'Atur ulang password.' : 'Halo lagi,\nsiap praktikum?'}
+      description={
+        resetting
+          ? 'Masukkan email akun praktikum untuk menerima tautan reset.'
+          : 'Masuk untuk lihat jadwal dan presensi.'
+      }
     >
+      {!resetting ? (
+        <View style={styles.segmentWrap} accessibilityRole="tablist">
+          <View style={[styles.segmentItem, styles.segmentActive]}>
+            <Text style={styles.segmentActiveText}>Masuk</Text>
+          </View>
+          <Pressable
+            accessibilityRole="tab"
+            disabled={!!busy}
+            onPress={() => router.replace('/register')}
+            style={styles.segmentItem}
+          >
+            <Text style={styles.segmentIdleText}>Daftar</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
       <View style={authStyles.form}>
         <AuthField
           label="Email"
+          icon="mail"
           value={email}
           onChangeText={setEmail}
+          placeholder="mahasiswa@kampus.ac.id"
           keyboardType="email-address"
           autoCapitalize="none"
           autoCorrect={false}
           autoComplete="email"
           editable={!busy}
         />
-        {!resetting && (
-          <View>
-            <AuthField
-              label="Password"
-              value={password}
-              onChangeText={setPassword}
-              passwordToggle
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoComplete="current-password"
-              editable={!busy}
-              returnKeyType="go"
-              onSubmitEditing={() => submit('email')}
-            />
-            <Pressable
-              accessibilityRole="button"
-              disabled={!!busy}
-              onPress={() => {
-                setMode('reset');
-                setError(null);
-                setNotice('');
-              }}
-              style={styles.forgotPassword}
-            >
-              <Text style={styles.smallLink}>Lupa password?</Text>
-            </Pressable>
-          </View>
-        )}
+        {!resetting ? (
+          <AuthField
+            label="Password"
+            icon="lock"
+            labelRight={
+              <Pressable
+                accessibilityRole="button"
+                disabled={!!busy}
+                onPress={() => {
+                  setMode('reset');
+                  setError(null);
+                  setNotice('');
+                }}
+              >
+                <Text style={styles.forgotLink}>Lupa password?</Text>
+              </Pressable>
+            }
+            value={password}
+            onChangeText={setPassword}
+            placeholder="••••••••"
+            passwordToggle
+            autoCapitalize="none"
+            autoCorrect={false}
+            autoComplete="current-password"
+            editable={!busy}
+            returnKeyType="go"
+            onSubmitEditing={() => submit('email')}
+          />
+        ) : null}
         <AuthError message={error ?? sessionError} />
         {notice ? (
-          <Text accessibilityLiveRegion="polite" style={authStyles.label}>
-            {notice}
-          </Text>
+          <View style={styles.noticeBox}>
+            <Text accessibilityLiveRegion="polite" style={styles.noticeText}>
+              {notice}
+            </Text>
+          </View>
         ) : null}
         <AuthButton
           title={resetting ? 'Kirim tautan reset' : 'Masuk'}
@@ -135,18 +169,12 @@ export default function LoginScreen() {
           disabled={!!busy}
         />
         {resetting ? (
-          <Text
-            accessibilityRole="button"
-            style={authStyles.link}
-            onPress={() => {
-              if (busy) return;
-              setMode('login');
-              setError(null);
-              setNotice('');
-            }}
-          >
-            Kembali ke masuk
-          </Text>
+          <AuthButton
+            title="Kembali ke masuk"
+            variant="soft"
+            disabled={!!busy}
+            onPress={returnToLogin}
+          />
         ) : (
           <>
             <View style={styles.divider}>
@@ -155,19 +183,12 @@ export default function LoginScreen() {
               <View style={styles.dividerLine} />
             </View>
             <AuthButton
-              title="Masuk dengan Google"
+              title="Lanjut dengan Google"
               variant="google"
               onPress={() => submit('google')}
               busy={busy === 'google'}
               disabled={!!busy}
             />
-            {!busy && (
-              <View style={styles.footer}>
-                <Link href="/register" style={[styles.smallLink, styles.footerLink]}>
-                  <Text style={styles.footerPrompt}>Belum punya akun? </Text>Daftar
-                </Link>
-              </View>
-            )}
           </>
         )}
       </View>
@@ -176,39 +197,63 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  forgotPassword: {
-    alignSelf: 'flex-end',
-    minHeight: 44,
+  segmentWrap: {
+    flexDirection: 'row',
+    backgroundColor: BrandColors.soft,
+    borderRadius: 999,
+    padding: 4,
+  },
+  segmentItem: {
+    flex: 1,
+    minHeight: 38,
+    borderRadius: 999,
+    alignItems: 'center',
     justifyContent: 'center',
   },
-  smallLink: {
-    color: BrandColors.forest,
+  segmentActive: {
+    backgroundColor: BrandColors.ink,
+  },
+  segmentActiveText: {
+    color: BrandColors.paper,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  segmentIdleText: {
+    color: BrandColors.muted,
     fontSize: 13,
     fontWeight: '700',
+  },
+  forgotLink: {
+    color: BrandColors.ink,
+    fontSize: 11.5,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
+  },
+  noticeBox: {
+    backgroundColor: BrandColors.soft,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  noticeText: {
+    color: BrandColors.ink,
+    fontSize: 13,
+    lineHeight: 19,
   },
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
+    marginVertical: 2,
   },
   dividerLine: {
     flex: 1,
-    height: StyleSheet.hairlineWidth,
+    height: 1,
     backgroundColor: BrandColors.line,
   },
   dividerText: {
-    color: BrandColors.forestSoft,
-    fontSize: 13,
-  },
-  footer: {
-    alignItems: 'center',
-  },
-  footerLink: {
-    paddingVertical: 12,
-    textAlign: 'center',
-  },
-  footerPrompt: {
-    color: BrandColors.forestSoft,
-    fontWeight: '400',
+    color: BrandColors.muted,
+    fontSize: 12,
+    fontWeight: '600',
   },
 });

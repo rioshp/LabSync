@@ -1,21 +1,35 @@
-import { getIdTokenResult, type User } from '@react-native-firebase/auth';
-import { useEffect, useState } from 'react';
+import type { User } from '@react-native-firebase/auth';
+import { useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
-  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AuthButton, AuthError, AuthField } from '@/components/auth-screen';
+import {
+  CsGraphLogo,
+  DarkContourOverlay,
+  DarkGradientOverlay,
+  ScreenBackdrop,
+} from '@/components/labsync-brand';
+import { LogoutButton } from '@/components/logout-button';
 import { BrandColors } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
-import { addAccountPassword, getAuthErrorMessage } from '@/lib/auth';
+import { getAuthErrorMessage } from '@/lib/auth';
 import { updateAccountProfile } from '@/lib/profile';
 import type { UserProfile } from '@/types/user';
+
+function initialsOf(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return 'LS';
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
 
 export default function ProfileScreen() {
   const { user, profile } = useAuth();
@@ -23,78 +37,28 @@ export default function ProfileScreen() {
 }
 
 function ProfileContent({ user, profile }: { user: User; profile: UserProfile }) {
+  const insets = useSafeAreaInsets();
   const [draft, setDraft] = useState<Partial<{ name: string; nim: string }>>({});
-  const [provider, setProvider] = useState<string | null>(null);
-  const [passwordAdded, setPasswordAdded] = useState(false);
-  const [addingPassword, setAddingPassword] = useState(false);
-  const [password, setPassword] = useState('');
-  const [confirmation, setConfirmation] = useState('');
-  const [busy, setBusy] = useState<'profile' | 'password' | null>(null);
-  const [feedback, setFeedback] = useState<{
-    section: 'profile' | 'password';
-    text: string;
-    error?: boolean;
-  } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [feedback, setFeedback] = useState<{ text: string; error?: boolean } | null>(null);
 
   const name = draft.name ?? profile.displayName;
   const nim = draft.nim ?? profile.nim ?? '';
-  const hasGoogle = user.providerData.some(({ providerId }) => providerId === 'google.com');
-  const hasPassword =
-    passwordAdded || user.providerData.some(({ providerId }) => providerId === 'password');
-  const currentMethod =
-    provider === 'google.com' ? 'Google' : provider === 'password' ? 'Email dan password' : null;
+  const roleLabel = profile.role === 'asisten' ? 'Asisten Praktikum' : 'Praktikan';
 
-  useEffect(() => {
-    let active = true;
-    void getIdTokenResult(user)
-      .then(({ signInProvider }) => {
-        if (active) setProvider(signInProvider);
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, [user]);
-
-  async function save(section: 'profile' | 'password') {
+  async function saveProfile() {
     if (busy) return;
-    setBusy(section);
+    setBusy(true);
     setFeedback(null);
     try {
-      if (section === 'profile') {
-        await updateAccountProfile(name, nim);
-        setDraft({});
-      } else {
-        await addAccountPassword(password, confirmation);
-        setPasswordAdded(true);
-        closePasswordForm();
-      }
-      setFeedback({
-        section,
-        text:
-          section === 'profile' ? 'Perubahan profil disimpan.' : 'Password berhasil ditambahkan.',
-      });
+      await updateAccountProfile(name, nim);
+      setDraft({});
+      setFeedback({ text: 'Perubahan profil disimpan.' });
     } catch (error) {
-      setFeedback({ section, text: getAuthErrorMessage(error), error: true });
+      setFeedback({ text: getAuthErrorMessage(error), error: true });
     } finally {
-      setBusy(null);
+      setBusy(false);
     }
-  }
-
-  function closePasswordForm() {
-    setAddingPassword(false);
-    setPassword('');
-    setConfirmation('');
-  }
-
-  function sectionFeedback(section: 'profile' | 'password') {
-    if (feedback?.section !== section) return null;
-    if (feedback.error) return <AuthError message={feedback.text} />;
-    return (
-      <Text accessibilityLiveRegion="polite" style={styles.success}>
-        {feedback.text}
-      </Text>
-    );
   }
 
   return (
@@ -102,112 +66,88 @@ function ProfileContent({ user, profile }: { user: User; profile: UserProfile })
       style={styles.screen}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
-        <View style={styles.card}>
-          <Text accessibilityRole="header" style={styles.title}>
-            Data profil
-          </Text>
-          <AuthField
-            label="Nama lengkap"
-            value={name}
-            onChangeText={(value) => setDraft((previous) => ({ ...previous, name: value }))}
-            maxLength={100}
-            autoComplete="name"
-            editable={!busy}
-          />
-          {profile.role === 'praktikan' && (
-            <AuthField
-              label="NIM"
-              value={nim}
-              onChangeText={(value) => setDraft((previous) => ({ ...previous, nim: value }))}
-              maxLength={30}
-              autoCorrect={false}
-              autoCapitalize="characters"
-              editable={!busy}
-            />
-          )}
-          <AuthButton
-            title="Simpan perubahan"
-            busy={busy === 'profile'}
-            disabled={
-              !!busy ||
-              !name.trim() ||
-              (profile.role === 'praktikan' && !nim.trim()) ||
-              (name.trim() === profile.displayName &&
-                nim.trim().toUpperCase() === (profile.nim ?? ''))
-            }
-            onPress={() => save('profile')}
-          />
-          {sectionFeedback('profile')}
+      <ScreenBackdrop variant="waves" />
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingBottom: insets.bottom + 106 }}
+      >
+        <View style={[styles.darkHeader, { paddingTop: insets.top + 10 }]}>
+          <DarkGradientOverlay />
+          <DarkContourOverlay />
+          <View style={styles.topRow}>
+            <View style={styles.topLeft}>
+              <CsGraphLogo size={26} inverted />
+              <Text style={styles.topTitle}>Profil</Text>
+            </View>
+            <LogoutButton inverted />
+          </View>
+
+          <View style={styles.avatarBlock}>
+            <View style={styles.avatarRing}>
+              <View style={styles.avatarCircle}>
+                <Text style={styles.avatarText}>{initialsOf(profile.displayName)}</Text>
+              </View>
+            </View>
+            <Text style={styles.profileName}>{profile.displayName}</Text>
+            <Text style={styles.profileEmail}>{user.email ?? 'Email tidak tersedia'}</Text>
+          </View>
         </View>
 
-        <View style={styles.card}>
-          <Text accessibilityRole="header" style={styles.title}>
-            Akun dan metode masuk
-          </Text>
-          <View style={styles.group}>
-            <Text style={styles.label}>Email akun</Text>
-            <Text selectable style={styles.value}>
-              {user.email ?? 'Email tidak tersedia'}
-            </Text>
+        <View style={styles.body}>
+          <View style={styles.summaryPill}>
+            <Text style={styles.summaryPillText}>{roleLabel}</Text>
           </View>
-          <View style={styles.group}>
-            <Text style={styles.label}>Metode terhubung</Text>
-            <Text style={styles.value}>
-              {[hasGoogle ? 'Google' : null, hasPassword ? 'Email dan password' : null]
-                .filter(Boolean)
-                .join(' · ') || 'Tidak tersedia'}
+
+          <View style={styles.card}>
+            <Text accessibilityRole="header" style={styles.title}>
+              Data profil
             </Text>
-          </View>
-          {currentMethod && (
-            <Text style={styles.detail}>Sesi ini masuk dengan {currentMethod}.</Text>
-          )}
-          {hasGoogle &&
-            !hasPassword &&
-            (addingPassword ? (
-              <View style={styles.passwordForm}>
-                <AuthField
-                  label="Password baru"
-                  value={password}
-                  onChangeText={setPassword}
-                  passwordToggle
-                  autoComplete="new-password"
-                  editable={!busy}
-                />
-                <AuthField
-                  label="Konfirmasi password"
-                  value={confirmation}
-                  onChangeText={setConfirmation}
-                  passwordToggle
-                  autoComplete="new-password"
-                  editable={!busy}
-                />
-                <AuthButton
-                  title="Simpan password"
-                  busy={busy === 'password'}
-                  disabled={!!busy || !password || !confirmation}
-                  onPress={() => save('password')}
-                />
-                <Pressable
-                  accessibilityRole="button"
-                  disabled={!!busy}
-                  onPress={closePasswordForm}
-                  style={styles.cancel}
-                >
-                  <Text style={styles.label}>Batal</Text>
-                </Pressable>
-              </View>
-            ) : (
-              <AuthButton
-                title="Tambahkan password"
-                disabled={!!busy}
-                onPress={() => {
-                  setFeedback(null);
-                  setAddingPassword(true);
-                }}
+            <AuthField
+              label="Nama lengkap"
+              icon="user"
+              value={name}
+              onChangeText={(value) => setDraft((previous) => ({ ...previous, name: value }))}
+              maxLength={100}
+              autoComplete="name"
+              editable={!busy}
+            />
+            {profile.role === 'praktikan' ? (
+              <AuthField
+                label="NIM"
+                icon="id"
+                value={nim}
+                onChangeText={(value) => setDraft((previous) => ({ ...previous, nim: value }))}
+                maxLength={30}
+                autoCorrect={false}
+                autoCapitalize="characters"
+                editable={!busy}
               />
-            ))}
-          {sectionFeedback('password')}
+            ) : null}
+            <AuthButton
+              title="Simpan perubahan"
+              busy={busy}
+              disabled={
+                busy ||
+                !name.trim() ||
+                (profile.role === 'praktikan' && !nim.trim()) ||
+                (name.trim() === profile.displayName &&
+                  nim.trim().toUpperCase() === (profile.nim ?? ''))
+              }
+              onPress={saveProfile}
+            />
+            {feedback ? (
+              feedback.error ? (
+                <AuthError message={feedback.text} />
+              ) : (
+                <View style={styles.successBox}>
+                  <Text accessibilityLiveRegion="polite" style={styles.successText}>
+                    {feedback.text}
+                  </Text>
+                </View>
+              )
+            ) : null}
+          </View>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -215,22 +155,125 @@ function ProfileContent({ user, profile }: { user: User; profile: UserProfile })
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: BrandColors.pageBackground },
-  content: { padding: 16, paddingBottom: 28, gap: 16 },
-  card: {
+  screen: {
+    flex: 1,
+    backgroundColor: BrandColors.pageBackground,
+  },
+  darkHeader: {
+    backgroundColor: BrandColors.ink,
+    paddingHorizontal: 18,
+    paddingBottom: 32,
+    borderBottomLeftRadius: 28,
+    borderBottomRightRadius: 28,
+    gap: 16,
+    overflow: 'hidden',
+  },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  topLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+  topTitle: {
+    color: BrandColors.paper,
+    fontSize: 17,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  avatarBlock: {
+    alignItems: 'center',
+    gap: 5,
+  },
+  avatarRing: {
+    padding: 4,
+    borderRadius: 34,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.16)',
+    marginBottom: 2,
+  },
+  avatarCircle: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: BrandColors.inkSoft,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.28)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarText: {
+    color: BrandColors.paper,
+    fontSize: 19,
+    fontWeight: '800',
+  },
+  profileName: {
+    color: BrandColors.paper,
+    fontSize: 17,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  profileEmail: {
+    color: 'rgba(255, 255, 255, 0.68)',
+    fontSize: 12.5,
+  },
+  body: {
+    width: '100%',
+    maxWidth: 680,
+    alignSelf: 'center',
+    paddingHorizontal: 16,
+    marginTop: -18,
     gap: 14,
+  },
+  summaryPill: {
     backgroundColor: BrandColors.paper,
     borderRadius: 16,
-    borderColor: BrandColors.line,
     borderWidth: 1,
-    padding: 16,
+    borderColor: BrandColors.line,
+    paddingVertical: 11,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    elevation: 3,
   },
-  title: { color: BrandColors.ink, fontSize: 19, fontWeight: '700' },
-  group: { gap: 4 },
-  label: { color: BrandColors.ink, fontSize: 13, fontWeight: '600' },
-  value: { color: BrandColors.ink, fontSize: 16 },
-  detail: { color: BrandColors.forest, fontSize: 14 },
-  success: { color: BrandColors.forest, fontSize: 14, fontWeight: '600' },
-  passwordForm: { gap: 12 },
-  cancel: { alignItems: 'center', justifyContent: 'center', minHeight: 44 },
+  summaryPillText: {
+    color: BrandColors.ink,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  card: {
+    backgroundColor: BrandColors.paper,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: BrandColors.line,
+    padding: 16,
+    gap: 12,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.05,
+    shadowRadius: 14,
+    elevation: 2,
+  },
+  title: {
+    color: BrandColors.ink,
+    fontSize: 16,
+    fontWeight: '800',
+  },
+  successBox: {
+    backgroundColor: BrandColors.soft,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  successText: {
+    color: BrandColors.ink,
+    fontSize: 13,
+    fontWeight: '700',
+  },
 });

@@ -19,6 +19,7 @@ import {
   subscribeSchedule,
   subscribeSessionAttendance,
   subscribeSessionReviewSummary,
+  subscribeStudentClasses,
 } from './listeners';
 import type {
   AcademicClass,
@@ -184,4 +185,12 @@ export function useSessionReviewSummary(
     [uid, classId, sessionId],
   );
   return useLive(key, subscribe, EMPTY_SUMMARY);
+}
+
+export function useStudentClasses(uid: string | undefined) {
+  const subscribe = useCallback<Subscribe<AcademicClass[]>>(
+    (onChange, onError) => (uid ? subscribeStudentClasses(uid, onChange, onError) : () => {}),
+    [uid],
+  );
+  return useLive(uid ?? '', subscribe, EMPTY_ARRAY);
 }
