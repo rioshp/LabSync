@@ -39,6 +39,7 @@ let outsider;
 let classId;
 let sessionId;
 let permitSessionId;
+let labId;
 
 function endpoint(name, fallback) {
   const [host, port] = (process.env[name] || fallback).split(':');
@@ -73,7 +74,8 @@ async function client(label) {
   dependencies['./firebase-error'] = loadTypeScript('src/lib/firebase-error.ts');
   dependencies['./auth'] = loadTypeScript('src/lib/auth.ts', dependencies);
   dependencies['./firestore-input'] = loadTypeScript('src/lib/firestore-input.ts', dependencies);
-  for (const module of ['classes', 'sessions', 'roster', 'participation', 'reviews']) {
+  dependencies['./location'] = loadTypeScript('src/lib/location.ts');
+  for (const module of ['labs', 'classes', 'sessions', 'roster', 'participation', 'reviews']) {
     dependencies['./' + module] = loadTypeScript('src/lib/' + module + '.ts', dependencies);
   }
   dependencies['./notification-triggers'] = {
@@ -90,7 +92,22 @@ async function client(label) {
     'src/lib/profile.ts',
     dependencies,
   );
-  return { uid: account.uid, db, mutate, completeProfile, updateAccountProfile };
+  return {
+    uid: account.uid,
+    db,
+    mutate: (action, fields) =>
+      mutate(
+        action,
+        action === 'checkIn'
+          ? {
+              location: { latitude: -7, longitude: 110, accuracy: 5, capturedAt: Date.now() },
+              ...fields,
+            }
+          : fields,
+      ),
+    completeProfile,
+    updateAccountProfile,
+  };
 }
 
 function observe(ref, matches, timeout = 12_000) {
@@ -219,12 +236,22 @@ test('assistant CRUD and enrollment enable only the correct class listener', asy
     startsAt: Date.now(),
     endsAt: Date.now() + 3_600_000,
   };
+  ({ id: labId } = await assistant.mutate('createLab', {
+    requestId: randomUUID(),
+    name: 'Lab Uji',
+    description: 'Gedung A',
+    latitude: -7,
+    longitude: 110,
+    radiusMeters: 50,
+  }));
   ({ id: sessionId } = await assistant.mutate('createSession', {
     ...base,
+    labId,
     requestId: randomUUID(),
   }));
   ({ id: permitSessionId } = await assistant.mutate('createSession', {
     ...base,
+    labId,
     moduleTitle: 'Praktikum 2',
     requestId: randomUUID(),
   }));
@@ -369,3 +396,4 @@ test('racing attendance and permit submission cannot record conflicting outcomes
   );
   assert.equal(retained.data().sessionSnapshot.moduleTitle, 'Praktikum 1');
 });
+

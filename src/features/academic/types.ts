@@ -26,6 +26,7 @@ export type AcademicSession = {
   className: string;
   module: string;
   room: string;
+  labId?: string;
   startsAt: Timestamp;
   endsAt: Timestamp;
   date: string;
