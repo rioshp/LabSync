@@ -34,6 +34,7 @@ function RootNavigator() {
           <Stack.Protected guard={role === 'praktikan'}>
             <Stack.Screen name="praktikan/kelas-detail" />
             <Stack.Screen name="praktikan/presensi" />
+            <Stack.Screen name="praktikan/check-in" />
             <Stack.Screen name="praktikan/ajukan-izin" />
             <Stack.Screen name="praktikan/ulasan" />
           </Stack.Protected>

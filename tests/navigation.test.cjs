@@ -93,6 +93,7 @@ test('the root stack protects tabs and details by account phase and role', () =>
     '(tabs)',
     'praktikan/kelas-detail',
     'praktikan/presensi',
+    'praktikan/check-in',
     'praktikan/ajukan-izin',
     'praktikan/ulasan',
   ]);
@@ -387,7 +388,8 @@ test('session detail opens the selected tab and loads data only for that tab', (
   assert.equal(backed, true);
 });
 
-test('an enrolled student can check in before attendance or permit documents exist', () => {
+test('an enrolled student opens the dedicated check-in page before attendance or permit documents exist', () => {
+  let destination;
   const time = { toDate: () => new Date(0) };
   const data = {
     'classes/kelas-a': { name: 'Basis Data', timeZone: 'Asia/Jakarta' },
@@ -402,7 +404,14 @@ test('an enrolled student can check in before attendance or permit documents exi
   const reads = [];
   const { StudentSession } = loadTypeScript('src/features/participation/student.tsx', {
     'expo-image': { Image: 'image' },
-    'expo-router': { useLocalSearchParams: () => ({ classId: 'kelas-a', sessionId: 'sesi-a' }) },
+    'expo-router': {
+      router: {
+        push: (href) => {
+          destination = href;
+        },
+      },
+      useLocalSearchParams: () => ({ classId: 'kelas-a', sessionId: 'sesi-a' }),
+    },
     'expo-status-bar': { StatusBar: 'status-bar' },
     'expo-symbols': { SymbolView: 'symbol' },
     '../../../assets/images/arrow-back-light.svg': 'arrow-back-light',
@@ -454,6 +463,11 @@ test('an enrolled student can check in before attendance or permit documents exi
       ['doc', 'permits/sesi-a~praktikan-a'],
     ],
   );
+  nodes.find(({ props }) => props.title === 'Presensi sekarang').props.onPress();
+  assert.deepEqual(destination, {
+    pathname: '/praktikan/check-in',
+    params: { classId: 'kelas-a', sessionId: 'sesi-a' },
+  });
   for (const title of ['Presensi sekarang', 'Ajukan izin']) {
     assert.ok(nodes.some(({ type, props }) => type === 'auth-button' && props.title === title));
   }

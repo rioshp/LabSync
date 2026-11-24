@@ -1,4 +1,6 @@
-import { doc, runTransaction, serverTimestamp } from '@react-native-firebase/firestore';
+import { doc, runTransaction, serverTimestamp, Timestamp } from '@react-native-firebase/firestore';
+
+import { evaluateLabProximity, readCheckInLocation } from './location';
 
 import { firestoreSession, readId, readText } from './firestore-input';
 
@@ -21,6 +23,9 @@ export async function recordParticipation(
   return runTransaction(db, async (tx) => {
     const attendance = (await tx.get(attendanceRef)).data();
     if (attendance) {
+      if (attendance.classId !== classId || attendance.studentUid !== uid) {
+        throw new Error('Catatan kehadiran tidak cocok dengan sesi yang dipilih.');
+      }
       if (submittingPermit) throw new Error('Kehadiran sudah tercatat untuk sesi ini.');
       return { id, checkedInAt: attendance.checkedInAt?.toMillis() };
     }
@@ -34,11 +39,53 @@ export async function recordParticipation(
     const session = (await tx.get(sessionRef)).data();
     const student = (await tx.get(doc(db, 'users', uid))).data();
     if (!classData || !session || !student) throw new Error('Data sesi tidak tersedia.');
+    if (session.assistantUid !== classData.assistantUid)
+      throw new Error('Data pemilik sesi tidak cocok.');
     if (submittingPermit && !['scheduled', 'open'].includes(session.status)) {
       throw new Error('Izin hanya bisa diajukan sebelum sesi selesai.');
     }
     if (!submittingPermit && session.status !== 'open') {
       throw new Error('Presensi hanya tersedia saat sesi dibuka.');
+    }
+
+    let locationProof = {};
+    if (!submittingPermit) {
+      if (typeof session.labId !== 'string' || !session.labId) {
+        throw new Error('Lokasi sesi belum disiapkan asisten.');
+      }
+      const lab = (await tx.get(doc(db, 'labs', session.labId))).data();
+      const enrollment = (await tx.get(doc(db, 'enrollments', `${classId}~${uid}`))).data();
+      if (
+        student.role !== 'praktikan' ||
+        student.accountStatus !== 'active' ||
+        enrollment?.status !== 'active' ||
+        classData.status !== 'active'
+      ) {
+        throw new Error('Presensi hanya untuk praktikan aktif yang terdaftar di kelas ini.');
+      }
+      if (!lab || lab.status !== 'active')
+        throw new Error('Laboratorium tidak aktif. Hubungi asisten.');
+      const sample = readCheckInLocation(fields.location);
+      const proximity = evaluateLabProximity(
+        sample,
+        { latitude: lab.latitude, longitude: lab.longitude },
+        lab.radiusMeters,
+      );
+      if (!proximity.inside)
+        throw new Error(
+          `Kamu berada di luar area presensi (${Math.round(proximity.distanceMeters)} m dari lab, batas ${proximity.radiusMeters} m).`,
+        );
+      locationProof = {
+        labId: session.labId,
+        radiusMeters: proximity.radiusMeters,
+        distanceMeters: proximity.distanceMeters,
+        checkInLocation: {
+          latitude: sample.latitude,
+          longitude: sample.longitude,
+          accuracy: sample.accuracy,
+          capturedAt: Timestamp.fromMillis(sample.capturedAt),
+        },
+      };
     }
 
     const timestamp = serverTimestamp();
@@ -58,7 +105,7 @@ export async function recordParticipation(
       },
     };
     if (!submittingPermit) {
-      tx.set(attendanceRef, { ...participation, checkedInAt: timestamp });
+      tx.set(attendanceRef, { ...participation, ...locationProof, checkedInAt: timestamp });
       return { id };
     }
     tx.set(permitRef, {

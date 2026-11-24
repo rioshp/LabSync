@@ -88,10 +88,6 @@ function SessionDetail({
   sessionId: string;
 }) {
   const [attempt, setAttempt] = useState(0);
-  const [busy, setBusy] = useState(false);
-  const lock = useRef(false);
-  const [notice, setNotice] = useState('');
-  const [mutationErrorMessage, setMutationErrorMessage] = useState<string | null>(null);
 
   const classInfo = useLive<ClassInfo>(uid, { kind: 'doc', path: 'classes/' + classId }, attempt);
   const session = useLive<Session>(
@@ -117,21 +113,8 @@ function SessionDetail({
     attempt,
   );
 
-  async function checkIn() {
-    if (lock.current) return;
-    lock.current = true;
-    setBusy(true);
-    setMutationErrorMessage(null);
-    setNotice('');
-    try {
-      await mutate('checkIn', { classId, sessionId });
-      setNotice('Presensi tersimpan.');
-    } catch (error) {
-      setMutationErrorMessage(mutationError(error));
-    } finally {
-      lock.current = false;
-      setBusy(false);
-    }
+  function checkIn() {
+    router.push({ pathname: '/praktikan/check-in', params: { classId, sessionId } });
   }
 
   const statusInfo = current ? SessionStatusStyles[current.status] : null;
@@ -229,12 +212,7 @@ function SessionDetail({
 
           <View style={local.actionStack}>
             {!loading && !error && !present && !permitBlocks && current.status === 'open' ? (
-              <AuthButton
-                title="Presensi sekarang"
-                onPress={checkIn}
-                busy={busy}
-                disabled={offline || !!notice}
-              />
+              <AuthButton title="Presensi sekarang" onPress={checkIn} disabled={offline} />
             ) : null}
             {!loading &&
             !error &&
@@ -244,7 +222,7 @@ function SessionDetail({
               <AuthButton
                 title="Ajukan izin"
                 variant="outline"
-                disabled={offline || busy || !!notice}
+                disabled={offline}
                 onPress={() =>
                   router.push({
                     pathname: '/praktikan/ajukan-izin',
@@ -267,12 +245,6 @@ function SessionDetail({
           {canReview && reviews.error ? (
             <Feedback {...reviews} retry={() => setAttempt((n) => n + 1)} />
           ) : null}
-          {notice && !present ? (
-            <Text accessibilityLiveRegion="polite" style={styles.text}>
-              {notice}
-            </Text>
-          ) : null}
-          <AuthError message={mutationErrorMessage} />
         </View>
       ) : null}
     </Page>
@@ -792,9 +764,7 @@ function StudentClassDetailContent({
                     {entry.item.sessionSnapshot.moduleTitle}
                   </Text>
                   <Text
-                    style={
-                      entry.item.status === 'rejected' ? styles.badgeDanger : styles.badgeSoft
-                    }
+                    style={entry.item.status === 'rejected' ? styles.badgeDanger : styles.badgeSoft}
                   >
                     Izin · {permitStatuses[entry.item.status]}
                   </Text>

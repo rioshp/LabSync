@@ -401,6 +401,23 @@ service cloud.firestore {
           'moduleTitle': session.moduleTitle, 'startsAt': session.startsAt, 'timeZone': parent.timeZone};
     }
 
+    function validCheckInLocation(data) {
+      let session = get(sessionPath(data.classId, data.sessionId)).data;
+      let lab = get(/databases/$(database)/documents/labs/$(session.labId)).data;
+      let sample = data.checkInLocation;
+      let distance = latlng.value(sample.latitude, sample.longitude).distance(latlng.value(lab.latitude, lab.longitude));
+      return data.labId == session.labId && lab.status == 'active'
+        && sample.keys().hasOnly(['latitude', 'longitude', 'accuracy', 'capturedAt'])
+        && validCoordinates(sample) && sample.accuracy is number && sample.accuracy > 0 && sample.accuracy <= 30
+        && sample.capturedAt is timestamp
+        && sample.capturedAt >= request.time - duration.value(30, 's')
+        && sample.capturedAt <= request.time + duration.value(5, 's')
+        && data.radiusMeters == lab.radiusMeters && validRadius(data.radiusMeters)
+        && distance <= lab.radiusMeters
+        && data.distanceMeters is number && data.distanceMeters >= 0
+        && math.abs(data.distanceMeters - distance) <= 1.0;
+    }
+
     match /attendances/{attendanceId} {
       function noConflictingPermit() {
         let path = /databases/$(database)/documents/permits/$(attendanceId);
@@ -410,10 +427,11 @@ service cloud.firestore {
         || ownsAsStudent(resource.data.studentUid);
       allow get: if ownMissingPair(attendanceId);
       allow create: if request.resource.data.keys().hasOnly(['classId', 'sessionId', 'assistantUid',
-          'studentUid', 'studentNameSnapshot', 'nimSnapshot', 'sessionSnapshot', 'checkedInAt'])
+          'studentUid', 'studentNameSnapshot', 'nimSnapshot', 'sessionSnapshot', 'checkedInAt',
+          'labId', 'checkInLocation', 'distanceMeters', 'radiusMeters'])
         && request.resource.data.checkedInAt == request.time
         && validParticipation(attendanceId, request.resource.data, ['open'])
-        && noConflictingPermit();
+        && noConflictingPermit() && validCheckInLocation(request.resource.data);
     }
 
     match /permits/{permitId} {
