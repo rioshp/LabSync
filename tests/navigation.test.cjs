@@ -35,6 +35,7 @@ function rootScreens(session) {
     'expo-router': { Stack },
     '@/features/academic/useAcademic': { AssistantClassesProvider: 'classes-provider' },
     '@/hooks/useAuth': { AuthProvider: 'provider', useAuth: () => session },
+    '@/hooks/useNotifications': { useNotifications: () => ({}) },
   }).default;
   const navigator = Root().props.children.type();
   assert.equal(navigator.type, 'classes-provider');
@@ -112,7 +113,7 @@ test('Expo Router resolves actual screen files without obsolete demo routes', ()
   const files = fs
     .readdirSync(dir, { recursive: true })
     .filter((file) => file.endsWith('.tsx'))
-    .map((file) => './' + file);
+    .map((file) => './' + file.replace(/\\/g, '/'));
   const context = () => ({ default: () => null });
   context.keys = () => files;
   const routeNode = getRoutes(context, { platform: 'android', importMode: 'lazy' });

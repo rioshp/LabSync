@@ -499,6 +499,18 @@ service cloud.firestore {
         && validSummary(resource.data, request.resource.data);
     }
 
+    match /pushTokens/{uid} {
+      allow read: if request.auth != null && (request.auth.uid == uid || hasRole('asisten'));
+      allow create, update: if request.auth != null && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['token', 'platform', 'enabled', 'updatedAt'])
+        && request.resource.data.token is string
+        && request.resource.data.token.size() <= 200
+        && request.resource.data.platform in ['android', 'ios', 'web']
+        && request.resource.data.enabled is bool
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if request.auth != null && request.auth.uid == uid;
+    }
+
     // Unlisted collections are available only to Firebase administrators.
     match /{document=**} {
       allow read, write: if false;
