@@ -20,9 +20,9 @@ function RootNavigator() {
   return (
     <AssistantClassesProvider uid={signedIn && role === 'asisten' ? user?.uid : undefined}>
       <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="index" />
+        <Stack.Screen name="index" options={{ animation: 'none' }} />
         <Stack.Protected guard={!user}>
-          <Stack.Screen name="register" />
+          <Stack.Screen name="register" options={{ animation: 'none' }} />
         </Stack.Protected>
         <Stack.Protected guard={signedIn}>
           <Stack.Screen name="(tabs)" />

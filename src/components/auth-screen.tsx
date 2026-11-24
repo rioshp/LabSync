@@ -4,6 +4,7 @@ import { SymbolView, type SFSymbol } from 'expo-symbols';
 import { useState, type ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -12,6 +13,7 @@ import {
   Text,
   TextInput,
   View,
+  useWindowDimensions,
   type TextInputProps,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -50,6 +52,7 @@ export function AuthScreen({
   dangerBadge = false,
   onBack,
   showHatch = false,
+  contentOpacity,
 }: {
   title: string;
   description?: string;
@@ -59,8 +62,10 @@ export function AuthScreen({
   dangerBadge?: boolean;
   onBack?: () => void;
   showHatch?: boolean;
+  contentOpacity?: Animated.Value;
 }) {
   const insets = useSafeAreaInsets();
+  const { fontScale } = useWindowDimensions();
   const isWave = header === 'wave';
 
   return (
@@ -92,12 +97,20 @@ export function AuthScreen({
               />
               <View style={styles.waveInner}>
                 <LabSyncLockup size={28} inverted />
-                <View style={styles.waveHero}>
-                  <Text accessibilityRole="header" style={styles.waveTitle}>
+                <Animated.View style={[styles.waveHero, { opacity: contentOpacity ?? 1 }]}>
+                  {/* Reserve two lines so switching auth routes keeps the form anchored. */}
+                  <Text
+                    accessibilityRole="header"
+                    style={[styles.waveTitle, { minHeight: 62 * fontScale }]}
+                  >
                     {title}
                   </Text>
-                  {description ? <Text style={styles.waveDescription}>{description}</Text> : null}
-                </View>
+                  {description ? (
+                    <Text style={[styles.waveDescription, { minHeight: 38 * fontScale }]}>
+                      {description}
+                    </Text>
+                  ) : null}
+                </Animated.View>
               </View>
             </View>
             <Image
@@ -156,9 +169,42 @@ export function AuthScreen({
           </View>
         )}
 
-        <View style={[styles.body, isWave && styles.bodyWave]}>{children}</View>
+        <View style={[styles.body, isWave && styles.bodyWave]}>
+          {children}
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
+  );
+}
+
+export function AuthTabs({
+  active,
+  disabled = false,
+  onChange,
+}: {
+  active: 'login' | 'register';
+  disabled?: boolean;
+  onChange: (mode: 'login' | 'register') => void;
+}) {
+  return (
+    <View style={styles.segmentWrap} accessibilityRole="tablist">
+      {(['login', 'register'] as const).map((tab) => (
+        <Pressable
+          key={tab}
+          accessibilityRole="tab"
+          accessibilityState={{ selected: active === tab, disabled }}
+          disabled={disabled || active === tab}
+          onPress={() => {
+            onChange(tab);
+          }}
+          style={[styles.segmentItem, active === tab && styles.segmentActive]}
+        >
+          <Text style={active === tab ? styles.segmentActiveText : styles.segmentIdleText}>
+            {tab === 'login' ? 'Masuk' : 'Daftar'}
+          </Text>
+        </Pressable>
+      ))}
+    </View>
   );
 }
 
@@ -328,6 +374,32 @@ export function AuthError({ message }: { message: string | null }) {
 }
 
 const styles = StyleSheet.create({
+  segmentWrap: {
+    flexDirection: 'row',
+    backgroundColor: BrandColors.soft,
+    borderRadius: 999,
+    padding: 4,
+  },
+  segmentItem: {
+    flex: 1,
+    minHeight: 38,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentActive: {
+    backgroundColor: BrandColors.ink,
+  },
+  segmentActiveText: {
+    color: BrandColors.paper,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  segmentIdleText: {
+    color: BrandColors.muted,
+    fontSize: 13,
+    fontWeight: '700',
+  },
   screen: {
     flex: 1,
   },
