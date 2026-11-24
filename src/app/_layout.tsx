@@ -28,6 +28,7 @@ function RootNavigator() {
           <Stack.Screen name="(tabs)" />
           <Stack.Protected guard={role === 'asisten'}>
             <Stack.Screen name="asisten/kelas" />
+            <Stack.Screen name="asisten/lab" />
             <Stack.Screen name="asisten/sesi" />
           </Stack.Protected>
           <Stack.Protected guard={role === 'praktikan'}>

@@ -139,12 +139,14 @@ export function Confirm({
   title,
   subtitle,
   danger = false,
+  scrollEnabled = true,
   children,
   onCancel,
 }: {
   title: string;
   subtitle?: string;
   danger?: boolean;
+  scrollEnabled?: boolean;
   children: ReactNode;
   onCancel: () => void;
 }) {
@@ -154,6 +156,7 @@ export function Confirm({
       title={title}
       subtitle={subtitle}
       danger={danger}
+      scrollEnabled={scrollEnabled}
       onClose={onCancel}
     >
       {children}

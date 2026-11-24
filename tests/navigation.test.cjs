@@ -85,6 +85,7 @@ test('the root stack protects tabs and details by account phase and role', () =>
     'index',
     '(tabs)',
     'asisten/kelas',
+    'asisten/lab',
     'asisten/sesi',
   ]);
   assert.deepEqual(rootScreens({ user, phase: 'active', role: 'praktikan' }), [
