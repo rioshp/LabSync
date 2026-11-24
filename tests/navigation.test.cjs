@@ -102,11 +102,11 @@ test('the root stack protects tabs and details by account phase and role', () =>
 test('tabs expose the correct screens for each role', () => {
   assert.deepEqual(
     tabs('asisten').map((screen) => screen.props.name),
-    ['jadwal', 'asisten/praktikum', 'asisten/izin', 'profil'],
+    ['jadwal', 'peta', 'asisten/praktikum', 'asisten/izin', 'profil'],
   );
   assert.deepEqual(
     tabs('praktikan').map((screen) => screen.props.name),
-    ['jadwal', 'praktikan/kelas', 'profil'],
+    ['jadwal', 'peta', 'praktikan/kelas', 'profil'],
   );
 });
 
