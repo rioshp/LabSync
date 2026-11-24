@@ -53,6 +53,14 @@
           "icon": "./assets/images/icon.png",
           "color": "#208AEF"
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "LabSync memakai lokasi untuk menampilkan posisi dan memeriksa area presensi laboratorium.",
+          "isIosBackgroundLocationEnabled": false,
+          "isAndroidBackgroundLocationEnabled": false
+        }
       ]
     ],
     "experiments": {
