@@ -76,6 +76,12 @@ async function client(label) {
   for (const module of ['classes', 'sessions', 'roster', 'participation', 'reviews']) {
     dependencies['./' + module] = loadTypeScript('src/lib/' + module + '.ts', dependencies);
   }
+  dependencies['./notification-triggers'] = {
+    notifySessionOpened: async () => {},
+    notifySessionUpdated: async () => {},
+    notifyPermitDecided: async () => {},
+    sendExpoPushNotifications: async () => {},
+  };
   const { mutate } = loadTypeScript('src/lib/mutations.ts', {
     ...dependencies,
     'expo-crypto': { randomUUID },

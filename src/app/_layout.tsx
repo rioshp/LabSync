@@ -2,6 +2,7 @@ import { Stack } from 'expo-router';
 
 import { AssistantClassesProvider } from '@/features/academic/useAcademic';
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
+import { useNotifications } from '@/hooks/useNotifications';
 
 export default function RootLayout() {
   return (
@@ -13,6 +14,7 @@ export default function RootLayout() {
 
 function RootNavigator() {
   const { user, phase, role } = useAuth();
+  useNotifications();
   const signedIn = phase === 'active';
 
   return (
