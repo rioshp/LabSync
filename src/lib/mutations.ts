@@ -1,5 +1,6 @@
 import { randomUUID } from 'expo-crypto';
 
+import { changeLab } from './labs';
 import { changeClass } from './classes';
 import { firebaseErrorCode } from './firebase-error';
 import {
@@ -15,6 +16,9 @@ import { changeSession } from './sessions';
 type Fields = Record<string, unknown>;
 
 const actions = {
+  createLab: (fields: Fields) => changeLab('createLab', fields),
+  updateLab: (fields: Fields) => changeLab('updateLab', fields),
+  archiveLab: (fields: Fields) => changeLab('archiveLab', fields),
   createClass: (fields: Fields) => changeClass('createClass', fields),
   updateClass: (fields: Fields) => changeClass('updateClass', fields),
   archiveClass: (fields: Fields) => changeClass('archiveClass', fields),

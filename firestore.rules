@@ -9,6 +9,20 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
     }
 
+    function activeUser() {
+      return hasRole('asisten') || hasRole('praktikan');
+    }
+
+    function validCoordinates(data) {
+      return data.latitude is number && data.longitude is number
+        && data.latitude >= -90 && data.latitude <= 90
+        && data.longitude >= -180 && data.longitude <= 180;
+    }
+
+    function validRadius(radius) {
+      return radius is number && radius >= 10 && radius <= 100;
+    }
+
     function ownsAsAssistant(assistantUid) {
       return hasRole('asisten') && assistantUid == request.auth.uid;
     }
@@ -497,6 +511,30 @@ service cloud.firestore {
         && request.resource.data.classId == resource.data.classId
         && request.resource.data.assistantUid == resource.data.assistantUid
         && validSummary(resource.data, request.resource.data);
+    }
+
+    match /labs/{labId} {
+      function validLab(data) {
+        return data.keys().hasOnly(['name', 'description', 'latitude', 'longitude', 'radiusMeters',
+          'status', 'assistantUid', 'createdAt', 'updatedBy', 'updatedAt', 'archivedAt'])
+          && validText(data.name, 100) && data.description is string && data.description.size() <= 500
+          && validCoordinates(data) && validRadius(data.radiusMeters)
+          && data.updatedBy == request.auth.uid && data.updatedAt == request.time;
+      }
+      allow read: if activeUser();
+      allow create: if hasRole('asisten') && ownCreateId(labId)
+        && validLab(request.resource.data) && request.resource.data.assistantUid == request.auth.uid
+        && request.resource.data.status == 'active' && request.resource.data.archivedAt == null
+        && request.resource.data.createdAt == request.time;
+      allow update: if ownsAsAssistant(resource.data.assistantUid) && resource.data.status == 'active'
+        && validLab(request.resource.data) && (
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'name', 'description', 'latitude', 'longitude', 'radiusMeters', 'updatedBy', 'updatedAt'])
+            && request.resource.data.status == 'active')
+          || (request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'archivedAt', 'updatedBy', 'updatedAt'])
+            && request.resource.data.status == 'archived' && request.resource.data.archivedAt == request.time)
+        );
     }
 
     match /pushTokens/{uid} {
