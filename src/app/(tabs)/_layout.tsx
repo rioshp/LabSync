@@ -40,16 +40,13 @@ function TabIcon({
   size?: number;
 }) {
   return (
-    <SymbolView
-      name={{ ios, android, web: android } as never}
-      tintColor={color}
-      size={size}
-    />
+    <SymbolView name={{ ios, android, web: android } as never} tintColor={color} size={size} />
   );
 }
 
 const TAB_LABELS: Record<string, string> = {
   jadwal: 'Jadwal',
+  peta: 'Peta',
   'asisten/praktikum': 'Praktikum',
   'asisten/izin': 'Izin',
   'praktikan/kelas': 'Kelas',
@@ -160,6 +157,16 @@ export default function AppTabs() {
             ),
             tabBarIcon: ({ color, size }) => (
               <TabIcon ios="calendar" android="calendar_today" color={color} size={size} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name="peta"
+          options={{
+            title: 'Peta Lab',
+            headerTitle: () => <HeaderTitle title="Peta laboratorium" />,
+            tabBarIcon: ({ color, size }) => (
+              <TabIcon ios="map" android="map" color={color} size={size} />
             ),
           }}
         />

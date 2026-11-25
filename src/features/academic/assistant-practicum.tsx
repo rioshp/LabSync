@@ -3,16 +3,10 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { SymbolView } from 'expo-symbols';
 import { useRef, useState } from 'react';
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-} from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { LabSelect } from '@/features/labs/lab-select';
 import { AuthButton } from '@/components/auth-screen';
 import {
   BottomSheetModal,
@@ -25,7 +19,11 @@ import { BrandColors, SessionStatusStyles } from '@/constants/theme';
 import { useAuth } from '@/hooks/useAuth';
 import { mutationError, mutate, newRequestId } from '@/lib/mutations';
 import type { StudentCandidate } from '@/lib/roster';
-import { classLocalDateTime, formatSessionRange, zonedDateTimeToEpochMs } from '@/features/academic/time';
+import {
+  classLocalDateTime,
+  formatSessionRange,
+  zonedDateTimeToEpochMs,
+} from '@/features/academic/time';
 import type { AcademicClass, AcademicSession } from '@/features/academic/types';
 import {
   useAssistantClasses,
@@ -43,6 +41,7 @@ type Draft = {
   timeZone: string;
   moduleTitle: string;
   room: string;
+  labId: string;
   date: string;
   endDate: string;
   startTime: string;
@@ -67,6 +66,7 @@ const EMPTY_DRAFT: Draft = {
   timeZone: 'Asia/Jakarta',
   moduleTitle: '',
   room: '',
+  labId: '',
   date: '',
   endDate: '',
   startTime: '',
@@ -154,6 +154,7 @@ function AssistantPracticumScreen({ classDetail }: { classDetail: boolean }) {
       ...EMPTY_DRAFT,
       moduleTitle: item?.module ?? '',
       room: item?.room ?? '',
+      labId: item?.labId ?? '',
       date: defaultDate,
       endDate: defaultDate,
       startTime: item?.startTime ?? '08:00',
@@ -235,18 +236,22 @@ function AssistantPracticumScreen({ classDetail }: { classDetail: boolean }) {
           createdClassId = id;
         }
       } else {
+        if (!draft.labId.trim()) throw new Error('Pilih laboratorium terlebih dahulu.');
         const { moduleTitle, room } = draft;
         const startsAt = zonedDateTimeToEpochMs(
           draft.date,
           draft.startTime,
           dialog.classInfo.timeZone,
         );
-        const endsAt = zonedDateTimeToEpochMs(
-          draft.date,
-          draft.endTime,
-          dialog.classInfo.timeZone,
-        );
-        const schedule = { classId: dialog.classInfo.id, moduleTitle, room, startsAt, endsAt };
+        const endsAt = zonedDateTimeToEpochMs(draft.date, draft.endTime, dialog.classInfo.timeZone);
+        const schedule = {
+          classId: dialog.classInfo.id,
+          moduleTitle,
+          room,
+          startsAt,
+          endsAt,
+          labId: draft.labId,
+        };
         if (dialog.item) {
           await mutate('updateSession', { ...schedule, sessionId: dialog.item.id });
         } else {
@@ -356,8 +361,7 @@ function AssistantPracticumScreen({ classDetail }: { classDetail: boolean }) {
           ? 'Ubah jadwal sesi'
           : 'Sesi baru';
 
-  const dialogSubtitle =
-    dialog?.kind === 'session' ? dialog.classInfo.name : undefined;
+  const dialogSubtitle = dialog?.kind === 'session' ? dialog.classInfo.name : undefined;
 
   return (
     <View style={styles.screen}>
@@ -407,11 +411,7 @@ function AssistantPracticumScreen({ classDetail }: { classDetail: boolean }) {
                 </View>
                 {selectedClass.status === 'active' ? (
                   <View style={styles.darkActions}>
-                    <SmallButton
-                      label="Ubah"
-                      onDark
-                      onPress={() => openClassForm(selectedClass)}
-                    />
+                    <SmallButton label="Ubah" onDark onPress={() => openClassForm(selectedClass)} />
                     <SmallButton
                       label="Arsipkan"
                       danger
@@ -426,6 +426,13 @@ function AssistantPracticumScreen({ classDetail }: { classDetail: boolean }) {
         ) : null}
 
         <View style={classDetail ? styles.detailBody : styles.section}>
+          {!classDetail ? (
+            <AuthButton
+              title="Kelola laboratorium"
+              variant="outline"
+              onPress={() => router.push('/asisten/lab')}
+            />
+          ) : null}
           {screenMessage ? (
             <View style={styles.notice}>
               <Text style={styles.noticeText}>{screenMessage}</Text>
@@ -547,7 +554,9 @@ function AssistantPracticumScreen({ classDetail }: { classDetail: boolean }) {
                           />
                           <TextInput
                             accessibilityLabel={
-                              searchByName ? 'Cari berdasarkan nama lengkap' : 'Cari berdasarkan NIM'
+                              searchByName
+                                ? 'Cari berdasarkan nama lengkap'
+                                : 'Cari berdasarkan NIM'
                             }
                             value={searchInput}
                             onChangeText={(value) => {
@@ -628,9 +637,7 @@ function AssistantPracticumScreen({ classDetail }: { classDetail: boolean }) {
                           style={[styles.rosterRow, idx > 0 && styles.rosterDivider]}
                         >
                           <View style={styles.rosterLeft}>
-                            <Text style={styles.rowNumber}>
-                              {String(idx + 1).padStart(2, '0')}
-                            </Text>
+                            <Text style={styles.rowNumber}>{String(idx + 1).padStart(2, '0')}</Text>
                             <View style={styles.rosterIdentity}>
                               <Text style={styles.studentName}>{student.studentNameSnapshot}</Text>
                               <Text style={styles.description}>NIM {student.nimSnapshot}</Text>
@@ -794,9 +801,7 @@ function AssistantPracticumScreen({ classDetail }: { classDetail: boolean }) {
                   />
                 ) : (
                   <Text
-                    style={
-                      dialog.destructive ? styles.dangerButtonText : styles.primaryButtonText
-                    }
+                    style={dialog.destructive ? styles.dangerButtonText : styles.primaryButtonText}
                   >
                     {dialog.label}
                   </Text>
@@ -815,12 +820,9 @@ function AssistantPracticumScreen({ classDetail }: { classDetail: boolean }) {
                   placeholder="Contoh: Pengukuran dasar"
                   maxLength={120}
                 />
-                <Field
-                  label="Ruang"
-                  value={draft.room}
-                  onChangeText={(room) => setDraft((value) => ({ ...value, room }))}
-                  placeholder="Contoh: Lab 2"
-                  maxLength={120}
+                <LabSelect
+                  labId={draft.labId}
+                  onChange={(location) => setDraft((value) => ({ ...value, ...location }))}
                 />
                 <DatePickerField
                   label="Tanggal"
@@ -935,10 +937,7 @@ function StatusPill({ label, archived }: { label: string; archived: boolean }) {
       ]}
     >
       <Text
-        style={[
-          styles.statusPillText,
-          { color: archived ? BrandColors.muted : BrandColors.paper },
-        ]}
+        style={[styles.statusPillText, { color: archived ? BrandColors.muted : BrandColors.paper }]}
       >
         {label}
       </Text>

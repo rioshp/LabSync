@@ -171,6 +171,7 @@ export function BottomSheetModal({
   title,
   subtitle,
   danger = false,
+  scrollEnabled = true,
   onClose,
   children,
 }: {
@@ -178,6 +179,7 @@ export function BottomSheetModal({
   title: string;
   subtitle?: string;
   danger?: boolean;
+  scrollEnabled?: boolean;
   onClose: () => void;
   children: ReactNode;
 }) {
@@ -215,6 +217,7 @@ export function BottomSheetModal({
             </View>
           </View>
           <ScrollView
+            scrollEnabled={scrollEnabled}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.sheetBody}

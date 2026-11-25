@@ -9,6 +9,20 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == role;
     }
 
+    function activeUser() {
+      return hasRole('asisten') || hasRole('praktikan');
+    }
+
+    function validCoordinates(data) {
+      return data.latitude is number && data.longitude is number
+        && data.latitude >= -90 && data.latitude <= 90
+        && data.longitude >= -180 && data.longitude <= 180;
+    }
+
+    function validRadius(radius) {
+      return radius is number && radius >= 10 && radius <= 100;
+    }
+
     function ownsAsAssistant(assistantUid) {
       return hasRole('asisten') && assistantUid == request.auth.uid;
     }
@@ -279,11 +293,14 @@ service cloud.firestore {
         function validSchedule(data) {
           return validText(data.moduleTitle, 120) && validText(data.room, 120)
             && data.startsAt is timestamp && data.endsAt is timestamp
-            && data.endsAt > data.startsAt;
+            && data.endsAt > data.startsAt
+            && data.labId is string
+            && get(/databases/$(database)/documents/labs/$(data.labId)).data.status == 'active'
+            && validRadius(get(/databases/$(database)/documents/labs/$(data.labId)).data.radiusMeters);
         }
         function validNewSession(data) {
           return data.keys().hasOnly(['assistantUid', 'moduleTitle', 'room', 'startsAt', 'endsAt',
-            'status', 'openedAt', 'closedAt', 'cancelledAt', 'pendingPermitCount', 'createdAt', 'updatedAt'])
+            'status', 'openedAt', 'closedAt', 'cancelledAt', 'pendingPermitCount', 'createdAt', 'updatedAt', 'labId'])
             && validSchedule(data) && data.assistantUid == request.auth.uid
             && data.status == 'scheduled' && data.openedAt == null && data.closedAt == null
             && data.cancelledAt == null && data.pendingPermitCount == 0
@@ -294,11 +311,11 @@ service cloud.firestore {
           let changed = after.diff(before).affectedKeys();
           return after.updatedAt == request.time && (
             (before.status == 'scheduled'
-              && changed.hasOnly(['moduleTitle', 'room', 'startsAt', 'endsAt', 'updatedAt'])
+              && changed.hasOnly(['moduleTitle', 'room', 'startsAt', 'endsAt', 'labId', 'updatedAt'])
               && validSchedule(after))
             || (before.status == 'scheduled' && after.status == 'open'
               && changed.hasOnly(['status', 'openedAt', 'updatedAt'])
-              && after.openedAt == request.time)
+              && after.openedAt == request.time && validSchedule(after))
             || (before.status == 'open' && after.status == 'closed'
               && changed.hasOnly(['status', 'closedAt', 'updatedAt'])
               && after.closedAt == request.time && pairedSessionCount(-1))
@@ -325,10 +342,15 @@ service cloud.firestore {
         }
         allow read: if canReadClassSessions(classId);
         allow get: if hasRole('praktikan') && hasAttendanceForSession(classId, sessionId);
+        function pairedLabSchedule(data) {
+          let path = /databases/$(database)/documents/labSchedules/$(sessionId);
+          return !('labId' in data) || (getAfter(path).data.classId == classId
+            && validLabSchedule(getAfter(path).data, sessionId));
+        }
         allow create: if activeOwnedClass() && ownCreateId(sessionId)
-          && validNewSession(request.resource.data);
+          && validNewSession(request.resource.data) && pairedLabSchedule(request.resource.data);
         allow update: if activeOwnedClass() && resource.data.assistantUid == request.auth.uid
-          && validSessionUpdate(resource.data, request.resource.data);
+          && validSessionUpdate(resource.data, request.resource.data) && pairedLabSchedule(request.resource.data);
         allow update: if request.auth != null
           && validPermitCountChange(resource.data, request.resource.data);
       }
@@ -379,6 +401,23 @@ service cloud.firestore {
           'moduleTitle': session.moduleTitle, 'startsAt': session.startsAt, 'timeZone': parent.timeZone};
     }
 
+    function validCheckInLocation(data) {
+      let session = get(sessionPath(data.classId, data.sessionId)).data;
+      let lab = get(/databases/$(database)/documents/labs/$(session.labId)).data;
+      let sample = data.checkInLocation;
+      let distance = latlng.value(sample.latitude, sample.longitude).distance(latlng.value(lab.latitude, lab.longitude));
+      return data.labId == session.labId && lab.status == 'active'
+        && sample.keys().hasOnly(['latitude', 'longitude', 'accuracy', 'capturedAt'])
+        && validCoordinates(sample) && sample.accuracy is number && sample.accuracy > 0 && sample.accuracy <= 30
+        && sample.capturedAt is timestamp
+        && sample.capturedAt >= request.time - duration.value(30, 's')
+        && sample.capturedAt <= request.time + duration.value(5, 's')
+        && data.radiusMeters == lab.radiusMeters && validRadius(data.radiusMeters)
+        && distance <= lab.radiusMeters
+        && data.distanceMeters is number && data.distanceMeters >= 0
+        && math.abs(data.distanceMeters - distance) <= 1.0;
+    }
+
     match /attendances/{attendanceId} {
       function noConflictingPermit() {
         let path = /databases/$(database)/documents/permits/$(attendanceId);
@@ -388,10 +427,11 @@ service cloud.firestore {
         || ownsAsStudent(resource.data.studentUid);
       allow get: if ownMissingPair(attendanceId);
       allow create: if request.resource.data.keys().hasOnly(['classId', 'sessionId', 'assistantUid',
-          'studentUid', 'studentNameSnapshot', 'nimSnapshot', 'sessionSnapshot', 'checkedInAt'])
+          'studentUid', 'studentNameSnapshot', 'nimSnapshot', 'sessionSnapshot', 'checkedInAt',
+          'labId', 'checkInLocation', 'distanceMeters', 'radiusMeters'])
         && request.resource.data.checkedInAt == request.time
         && validParticipation(attendanceId, request.resource.data, ['open'])
-        && noConflictingPermit();
+        && noConflictingPermit() && validCheckInLocation(request.resource.data);
     }
 
     match /permits/{permitId} {
@@ -497,6 +537,53 @@ service cloud.firestore {
         && request.resource.data.classId == resource.data.classId
         && request.resource.data.assistantUid == resource.data.assistantUid
         && validSummary(resource.data, request.resource.data);
+    }
+
+    match /labs/{labId} {
+      function validLab(data) {
+        return data.keys().hasOnly(['name', 'description', 'latitude', 'longitude', 'radiusMeters',
+          'status', 'assistantUid', 'createdAt', 'updatedBy', 'updatedAt', 'archivedAt'])
+          && validText(data.name, 100) && data.description is string && data.description.size() <= 500
+          && validCoordinates(data) && validRadius(data.radiusMeters)
+          && data.updatedBy == request.auth.uid && data.updatedAt == request.time;
+      }
+      allow read: if activeUser();
+      allow create: if hasRole('asisten') && ownCreateId(labId)
+        && validLab(request.resource.data) && request.resource.data.assistantUid == request.auth.uid
+        && request.resource.data.status == 'active' && request.resource.data.archivedAt == null
+        && request.resource.data.createdAt == request.time;
+      allow update: if ownsAsAssistant(resource.data.assistantUid) && resource.data.status == 'active'
+        && validLab(request.resource.data) && (
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'name', 'description', 'latitude', 'longitude', 'radiusMeters', 'updatedBy', 'updatedAt'])
+            && request.resource.data.status == 'active')
+          || (request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'status', 'archivedAt', 'updatedBy', 'updatedAt'])
+            && request.resource.data.status == 'archived' && request.resource.data.archivedAt == request.time)
+        );
+    }
+
+    function validLabSchedule(data, sessionId) {
+      let session = getAfter(sessionPath(data.classId, sessionId)).data;
+      let parent = get(/databases/$(database)/documents/classes/$(data.classId)).data;
+      return data.keys().hasOnly(['labId', 'classId', 'sessionId', 'assistantUid', 'practicumName',
+          'className', 'moduleTitle', 'startsAt', 'endsAt', 'timeZone', 'status', 'updatedAt'])
+        && data.sessionId == sessionId && data.assistantUid == request.auth.uid
+        && parent.assistantUid == request.auth.uid && session.assistantUid == request.auth.uid
+        && data.labId == session.labId && data.practicumName == parent.practicumName
+        && data.className == parent.name && data.timeZone == parent.timeZone
+        && data.moduleTitle == session.moduleTitle && data.startsAt == session.startsAt
+        && data.endsAt == session.endsAt && data.status == session.status
+        && data.updatedAt == request.time && session.updatedAt == request.time;
+    }
+
+    match /labSchedules/{sessionId} {
+      allow read: if activeUser();
+      allow create: if hasRole('asisten') && validLabSchedule(request.resource.data, sessionId);
+      allow update: if ownsAsAssistant(resource.data.assistantUid)
+        && request.resource.data.classId == resource.data.classId
+        && request.resource.data.assistantUid == resource.data.assistantUid
+        && validLabSchedule(request.resource.data, sessionId);
     }
 
     match /pushTokens/{uid} {

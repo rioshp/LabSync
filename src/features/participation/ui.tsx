@@ -30,6 +30,7 @@ export function Page({
   arc = false,
   clean = false,
   tabScreen = false,
+  scrollEnabled = true,
   backdrop,
   headerRight,
   children,
@@ -40,6 +41,7 @@ export function Page({
   arc?: boolean;
   clean?: boolean;
   tabScreen?: boolean;
+  scrollEnabled?: boolean;
   backdrop?: 'waves' | 'topo' | 'blobs' | 'geometric';
   headerRight?: ReactNode;
   children?: ReactNode;
@@ -54,6 +56,7 @@ export function Page({
       <ScreenBackdrop variant={resolvedBackdrop} />
       {arc ? <ConcentricArcOverlay /> : null}
       <ScrollView
+        scrollEnabled={scrollEnabled}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={[
@@ -139,12 +142,14 @@ export function Confirm({
   title,
   subtitle,
   danger = false,
+  scrollEnabled = true,
   children,
   onCancel,
 }: {
   title: string;
   subtitle?: string;
   danger?: boolean;
+  scrollEnabled?: boolean;
   children: ReactNode;
   onCancel: () => void;
 }) {
@@ -154,6 +159,7 @@ export function Confirm({
       title={title}
       subtitle={subtitle}
       danger={danger}
+      scrollEnabled={scrollEnabled}
       onClose={onCancel}
     >
       {children}

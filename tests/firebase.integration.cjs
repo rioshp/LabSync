@@ -39,6 +39,7 @@ let outsider;
 let classId;
 let sessionId;
 let permitSessionId;
+let labId;
 
 function endpoint(name, fallback) {
   const [host, port] = (process.env[name] || fallback).split(':');
@@ -73,7 +74,8 @@ async function client(label) {
   dependencies['./firebase-error'] = loadTypeScript('src/lib/firebase-error.ts');
   dependencies['./auth'] = loadTypeScript('src/lib/auth.ts', dependencies);
   dependencies['./firestore-input'] = loadTypeScript('src/lib/firestore-input.ts', dependencies);
-  for (const module of ['classes', 'sessions', 'roster', 'participation', 'reviews']) {
+  dependencies['./location'] = loadTypeScript('src/lib/location.ts');
+  for (const module of ['labs', 'classes', 'sessions', 'roster', 'participation', 'reviews']) {
     dependencies['./' + module] = loadTypeScript('src/lib/' + module + '.ts', dependencies);
   }
   dependencies['./notification-triggers'] = {
@@ -90,7 +92,22 @@ async function client(label) {
     'src/lib/profile.ts',
     dependencies,
   );
-  return { uid: account.uid, db, mutate, completeProfile, updateAccountProfile };
+  return {
+    uid: account.uid,
+    db,
+    mutate: (action, fields) =>
+      mutate(
+        action,
+        action === 'checkIn'
+          ? {
+              location: { latitude: -7, longitude: 110, accuracy: 5, capturedAt: Date.now() },
+              ...fields,
+            }
+          : fields,
+      ),
+    completeProfile,
+    updateAccountProfile,
+  };
 }
 
 function observe(ref, matches, timeout = 12_000) {
@@ -219,12 +236,22 @@ test('assistant CRUD and enrollment enable only the correct class listener', asy
     startsAt: Date.now(),
     endsAt: Date.now() + 3_600_000,
   };
+  ({ id: labId } = await assistant.mutate('createLab', {
+    requestId: randomUUID(),
+    name: 'Lab Uji',
+    description: 'Gedung A',
+    latitude: -7,
+    longitude: 110,
+    radiusMeters: 50,
+  }));
   ({ id: sessionId } = await assistant.mutate('createSession', {
     ...base,
+    labId,
     requestId: randomUUID(),
   }));
   ({ id: permitSessionId } = await assistant.mutate('createSession', {
     ...base,
+    labId,
     moduleTitle: 'Praktikum 2',
     requestId: randomUUID(),
   }));
@@ -368,4 +395,242 @@ test('racing attendance and permit submission cannot record conflicting outcomes
     doc(student.db, 'attendances', sessionId + '~' + student.uid),
   );
   assert.equal(retained.data().sessionSnapshot.moduleTitle, 'Praktikum 1');
+});
+
+async function locationFixture() {
+  const { id: testLabId } = await assistant.mutate('createLab', {
+    requestId: randomUUID(),
+    name: 'Lab Lokasi',
+    description: '',
+    latitude: -7,
+    longitude: 110,
+    radiusMeters: 50,
+  });
+  const { id: testClassId } = await assistant.mutate('createClass', {
+    requestId: randomUUID(),
+    name: 'Kelas Lokasi',
+    timeZone: 'Asia/Jakarta',
+  });
+  await assistant.mutate('addStudent', {
+    classId: testClassId,
+    studentUid: student.uid,
+    nim: '260001',
+    displayName: 'Praktikan A',
+  });
+  const { id: testSessionId } = await assistant.mutate('createSession', {
+    requestId: randomUUID(),
+    classId: testClassId,
+    labId: testLabId,
+    moduleTitle: 'Lokasi',
+    room: 'Lab Lokasi',
+    startsAt: Date.now() + 60_000,
+    endsAt: Date.now() + 3_600_000,
+  });
+  return { classId: testClassId, sessionId: testSessionId, labId: testLabId };
+}
+
+test('lab CRUD is role-scoped and projections publish every session transition atomically', async () => {
+  const ids = await locationFixture();
+  const lab = doc(assistant.db, 'labs', ids.labId);
+  const originalLab = (await getDocFromServer(lab)).data();
+  await assert.rejects(
+    setDoc(doc(student.db, 'labs', ids.labId), { ...originalLab, name: 'Tấn công' }),
+    denied,
+  );
+  await assert.rejects(
+    otherAssistant.mutate('updateLab', { ...originalLab, labId: ids.labId, name: 'Khác' }),
+    /asisten lain/,
+  );
+  await assistant.mutate('updateLab', { ...originalLab, labId: ids.labId, description: 'Tầng 2' });
+  assert.equal((await getDocFromServer(lab)).data().description, 'Tầng 2');
+  const projection = doc(outsider.db, 'labSchedules', ids.sessionId);
+  const source = doc(assistant.db, 'classes', ids.classId, 'sessions', ids.sessionId);
+  const initial = (await getDocFromServer(source)).data();
+  assert.equal((await getDocFromServer(projection)).data().status, 'scheduled');
+  await assert.rejects(getDocFromServer(doc(outsider.db, source.path)), denied);
+  await assert.rejects(
+    setDoc(source, {
+      ...initial,
+      moduleTitle: 'Thay đổi thiếu proyeksi',
+      updatedAt: firestore.serverTimestamp(),
+    }),
+    denied,
+  );
+  const projected = (await getDocFromServer(projection)).data();
+  await assert.rejects(
+    setDoc(doc(assistant.db, projection.path), {
+      ...projected,
+      moduleTitle: 'Giả',
+      updatedAt: firestore.serverTimestamp(),
+    }),
+    denied,
+  );
+  const newStart = initial.startsAt.toMillis() + 60_000;
+  await assistant.mutate('updateSession', {
+    ...ids,
+    moduleTitle: 'Lokasi Diperbarui',
+    room: initial.room,
+    startsAt: newStart,
+    endsAt: initial.endsAt.toMillis(),
+    radiusMeters: 60,
+  });
+  assert.equal((await getDocFromServer(projection)).data().moduleTitle, 'Lokasi Diperbarui');
+  assert.equal((await getDocFromServer(source)).data().radiusMeters, undefined);
+  await assistant.mutate('openSession', ids);
+  assert.equal((await getDocFromServer(projection)).data().status, 'open');
+  await assistant.mutate('openSession', ids);
+  await assistant.mutate('closeSession', ids);
+  assert.equal((await getDocFromServer(projection)).data().status, 'closed');
+  assert.equal(
+    (await getDocFromServer(doc(assistant.db, 'classes', ids.classId))).data()
+      .unfinishedSessionCount,
+    0,
+  );
+  await assistant.mutate('archiveLab', { labId: ids.labId });
+  assert.equal((await getDocFromServer(lab)).data().status, 'archived');
+  const cancellation = await locationFixture();
+  await assistant.mutate('cancelSession', cancellation);
+  assert.equal(
+    (await getDocFromServer(doc(outsider.db, 'labSchedules', cancellation.sessionId))).data()
+      .status,
+    'cancelled',
+  );
+});
+
+test('check-in rejects outside, stale and inaccurate samples and rules recompute distance', async () => {
+  const ids = await locationFixture();
+  await assistant.mutate('openSession', ids);
+  await assert.rejects(
+    student.mutate('checkIn', {
+      ...ids,
+      location: { latitude: -7.01, longitude: 110, accuracy: 5, capturedAt: Date.now() },
+    }),
+    /luar area/,
+  );
+  await assert.rejects(
+    student.mutate('checkIn', {
+      ...ids,
+      location: { latitude: -7, longitude: 110, accuracy: 50, capturedAt: Date.now() },
+    }),
+    /akurat/,
+  );
+  await assert.rejects(
+    student.mutate('checkIn', {
+      ...ids,
+      location: { latitude: -7, longitude: 110, accuracy: 5, capturedAt: Date.now() - 60_000 },
+    }),
+    /kedaluwarsa/,
+  );
+  const attendanceId = ids.sessionId + '~' + student.uid;
+  const source = (
+    await getDocFromServer(doc(student.db, 'classes', ids.classId, 'sessions', ids.sessionId))
+  ).data();
+  const raw = {
+    classId: ids.classId,
+    sessionId: ids.sessionId,
+    assistantUid: assistant.uid,
+    studentUid: student.uid,
+    studentNameSnapshot: 'Praktikan A',
+    nimSnapshot: '260001',
+    sessionSnapshot: {
+      practicumName: 'Kelas Lokasi',
+      className: 'Kelas Lokasi',
+      moduleTitle: source.moduleTitle,
+      startsAt: source.startsAt,
+      timeZone: 'Asia/Jakarta',
+    },
+    labId: ids.labId,
+    radiusMeters: 50,
+    distanceMeters: 0,
+    checkedInAt: firestore.serverTimestamp(),
+    checkInLocation: {
+      latitude: -7.01,
+      longitude: 110,
+      accuracy: 5,
+      capturedAt: firestore.Timestamp.now(),
+    },
+  };
+  await assert.rejects(setDoc(doc(student.db, 'attendances', attendanceId), raw), denied);
+  await assert.rejects(
+    setDoc(doc(student.db, 'attendances', attendanceId), { ...raw, radiusMeters: 10000 }),
+    denied,
+  );
+  await Promise.all([student.mutate('checkIn', ids), student.mutate('checkIn', ids)]);
+  const attendance = (await getDocFromServer(doc(student.db, 'attendances', attendanceId))).data();
+  assert.equal(attendance.labId, ids.labId);
+  assert.equal(attendance.distanceMeters, 0);
+  assert.equal(attendance.radiusMeters, 50);
+  await assistant.mutate('closeSession', ids);
+  // A retry of an already committed attendance preserves the original record after closure.
+  assert.equal((await student.mutate('checkIn', ids)).id, attendanceId);
+  await assert.rejects(
+    setDoc(doc(student.db, 'attendances', attendanceId), { ...attendance, distanceMeters: 1 }),
+    denied,
+  );
+});
+
+test('lab selection and location are mandatory without breaking permits', async () => {
+  const ids = await locationFixture();
+  await assistant.mutate('archiveLab', { labId: ids.labId });
+  await assert.rejects(assistant.mutate('openSession', ids), /tidak aktif/);
+  const active = await locationFixture();
+  await assistant.mutate('openSession', active);
+  const pending = await student.mutate('submitPermit', {
+    ...active,
+    reason: 'Saya tidak dapat hadir karena sakit.',
+  });
+  await assert.rejects(student.mutate('checkIn', active), /menghalangi/);
+  await assistant.mutate('decidePermit', {
+    permitId: pending.id,
+    decision: 'rejected',
+    decisionNote: 'Silakan hadir.',
+  });
+  await student.mutate('checkIn', active);
+  assert.equal(
+    (
+      await getDocFromServer(doc(student.db, 'attendances', active.sessionId + '~' + student.uid))
+    ).exists(),
+    true,
+  );
+});
+
+test('attendance uses the current lab radius and ignores legacy session or client overrides', async () => {
+  const ids = await locationFixture();
+  const sessionPath = `classes/${ids.classId}/sessions/${ids.sessionId}`;
+  // Existing sessions may retain an obsolete custom radius; it must have no authority.
+  await getAdminFirestore(admin).doc(sessionPath).update({ radiusMeters: 100 });
+  await assistant.mutate('openSession', ids);
+  const labRef = doc(assistant.db, 'labs', ids.labId);
+  const original = (await getDocFromServer(labRef)).data();
+  await assistant.mutate('updateLab', { ...original, labId: ids.labId, radiusMeters: 10 });
+  await assert.rejects(student.mutate('checkIn', {
+    ...ids,
+    radiusMeters: 100,
+    location: { latitude: -7.0002, longitude: 110, accuracy: 5, capturedAt: Date.now() },
+  }), /luar area/);
+  const source = (await getDocFromServer(doc(student.db, sessionPath))).data();
+  const attendanceRef = doc(student.db, 'attendances', ids.sessionId + '~' + student.uid);
+  // Direct writes must also reject the old radius, even at the center of the lab.
+  await assert.rejects(setDoc(attendanceRef, {
+    classId: ids.classId,
+    sessionId: ids.sessionId,
+    assistantUid: assistant.uid,
+    studentUid: student.uid,
+    studentNameSnapshot: 'Praktikan A',
+    nimSnapshot: '260001',
+    sessionSnapshot: {
+      practicumName: 'Kelas Lokasi', className: 'Kelas Lokasi',
+      moduleTitle: source.moduleTitle, startsAt: source.startsAt, timeZone: 'Asia/Jakarta',
+    },
+    labId: ids.labId, radiusMeters: 100, distanceMeters: 0,
+    checkedInAt: firestore.serverTimestamp(),
+    checkInLocation: {
+      latitude: -7, longitude: 110, accuracy: 5, capturedAt: firestore.Timestamp.now(),
+    },
+  }), denied);
+  await student.mutate('checkIn', { ...ids, radiusMeters: 100 });
+  assert.equal((await getDocFromServer(attendanceRef)).data().radiusMeters, 10);
+  // A later lab change must not rewrite the radius recorded on an earlier attendance.
+  await assistant.mutate('updateLab', { ...original, labId: ids.labId, radiusMeters: 30 });
+  assert.equal((await getDocFromServer(attendanceRef)).data().radiusMeters, 10);
 });

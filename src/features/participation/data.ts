@@ -17,6 +17,7 @@ export type Session = {
   assistantUid: string;
   moduleTitle: string;
   room: string;
+  labId?: string;
   startsAt: Timestamp;
   endsAt: Timestamp;
   status: AcademicSessionStatus;

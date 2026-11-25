@@ -91,6 +91,7 @@ export function parseAcademicSession(
     className: classInfo.name,
     module: stringField(data, 'moduleTitle'),
     room: stringField(data, 'room'),
+    labId: typeof data.labId === 'string' ? data.labId : undefined,
     startsAt,
     endsAt,
     date: start.date,
