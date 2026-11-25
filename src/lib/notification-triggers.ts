@@ -164,16 +164,17 @@ export async function notifySessionOpened(params: {
 }
 
 /**
- * Trigger 2: Notifikasi saat jadwal praktikum diubah atau dibatalkan (updateSession / cancelSession).
+ * Trigger 2: Notifikasi saat sesi baru ditambahkan, diubah, atau dibatalkan
+ * (createSession / updateSession / cancelSession).
  */
 export async function notifySessionUpdated(params: {
   classId: string;
   sessionId: string;
-  action: 'updateSession' | 'cancelSession';
+  action: 'createSession' | 'updateSession' | 'cancelSession';
 }): Promise<void> {
   const { classId, sessionId, action } = params;
   try {
-    const { db } = await import('@/lib/firebase');
+    const { auth, db } = await import('@/lib/firebase');
     const { doc, getDoc } = await import('@react-native-firebase/firestore');
 
     const [classSnap, sessionSnap] = await Promise.all([
@@ -185,17 +186,33 @@ export async function notifySessionUpdated(params: {
     const sessionData = sessionSnap.data();
     if (!classData || !sessionData) return;
 
-    const tokens = await getActiveStudentPushTokens(classId, classData.assistantUid);
+    const assistantUid = classData.assistantUid ?? auth?.currentUser?.uid;
+    const tokens = await getActiveStudentPushTokens(classId, assistantUid);
     if (tokens.length === 0) return;
 
     const moduleTitle = sessionData.moduleTitle ?? 'Praktikum';
     const className = classData.name ?? 'Kelas';
-    const isCancelled = action === 'cancelSession';
-
-    const title = isCancelled ? 'Sesi Praktikum Dibatalkan' : 'Jadwal Praktikum Diperbarui';
-    const body = isCancelled
-      ? `Sesi ${moduleTitle} (${className}) telah dibatalkan oleh asisten.`
-      : `Jadwal sesi ${moduleTitle} (${className}) telah diperbarui oleh asisten. Silakan periksa jadwal terbaru.`;
+    const contentByAction = {
+      createSession: {
+        title: 'Sesi Praktikum Baru',
+        body: `Sesi baru ${moduleTitle} (${className}) telah ditambahkan oleh asisten. Silakan periksa jadwal Anda.`,
+        type: 'session_created',
+        url: `/praktikan/presensi?classId=${classId}&sessionId=${sessionId}`,
+      },
+      updateSession: {
+        title: 'Jadwal Praktikum Diperbarui',
+        body: `Jadwal sesi ${moduleTitle} (${className}) telah diperbarui oleh asisten. Silakan periksa jadwal terbaru.`,
+        type: 'session_updated',
+        url: `/praktikan/presensi?classId=${classId}&sessionId=${sessionId}`,
+      },
+      cancelSession: {
+        title: 'Sesi Praktikum Dibatalkan',
+        body: `Sesi ${moduleTitle} (${className}) telah dibatalkan oleh asisten.`,
+        type: 'session_cancelled',
+        url: '/jadwal',
+      },
+    } as const;
+    const { title, body, type, url } = contentByAction[action];
 
     const messages: ExpoPushMessage[] = tokens.map((to) => ({
       to,
@@ -205,10 +222,8 @@ export async function notifySessionUpdated(params: {
       channelId: NOTIFICATION_CHANNEL_ID,
       priority: 'high',
       data: {
-        type: isCancelled ? 'session_cancelled' : 'session_updated',
-        url: isCancelled
-          ? '/jadwal'
-          : `/praktikan/presensi?classId=${classId}&sessionId=${sessionId}`,
+        type,
+        url,
         classId,
         sessionId,
       },
