@@ -12,6 +12,7 @@ export default function LabMap() {
   const labs = useLabs();
   const location = useDeviceLocation();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [mapTouching, setMapTouching] = useState(false);
   const [focus, setFocus] = useState<Coordinates | null>(null);
   const selected = labs.items.find((lab) => lab.id === selectedId);
   return (
@@ -19,10 +20,12 @@ export default function LabMap() {
       tabScreen
       title="Peta laboratorium"
       subtitle="Temukan lokasi lab dan aktivitas praktikum terkini."
+      scrollEnabled={!mapTouching}
     >
       <Feedback {...labs} />
       {!labs.loading && !labs.error ? (
         <MapScene
+          onTouchChange={setMapTouching}
           labs={labs.items}
           selectedLabId={selectedId}
           onSelectLab={(id) => {

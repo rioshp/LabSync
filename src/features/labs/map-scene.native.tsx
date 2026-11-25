@@ -188,6 +188,8 @@ export default function MapScene({
             key={lab.id}
             id={`lab-${lab.id}`}
             lngLat={toMapCoordinate(lab)}
+            anchor="left"
+            offset={[-11, 0]}
             title={lab.name}
             selected={lab.id === selectedLabId}
             onPress={(event) => {
@@ -195,7 +197,12 @@ export default function MapScene({
               onSelectLab?.(lab.id);
             }}
           >
-            <View collapsable={false} accessibilityLabel={lab.name} style={styles.labPin} />
+            <View collapsable={false} accessibilityLabel={lab.name} style={styles.labMarker}>
+              <View style={styles.labPin} />
+              <Text numberOfLines={1} style={styles.labLabel}>
+                {lab.name}
+              </Text>
+            </View>
           </ViewAnnotation>
         ))}
         {draft && !centerPicker ? (
@@ -291,6 +298,23 @@ const styles = StyleSheet.create({
     borderLeftColor: 'transparent', borderRightColor: 'transparent', borderTopColor: '#1769E0',
   },
   pinShadow: { width: 10, height: 4, borderRadius: 5, backgroundColor: '#00000030' },
+  // Anchor the dot at the coordinate even when labels have different lengths.
+  labMarker: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingVertical: 4,
+  },
+  labLabel: {
+    maxWidth: 160,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 6,
+    backgroundColor: '#FFFFFFE6',
+    color: BrandColors.ink,
+    fontSize: 12,
+    fontWeight: '700',
+  },
   labPin: {
     width: 22,
     height: 22,
