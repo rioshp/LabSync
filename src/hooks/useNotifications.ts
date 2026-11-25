@@ -28,7 +28,7 @@ function navigateFromNotification(
   }
 
   const { type, classId, sessionId } = data;
-  if (type === 'session_opened' || type === 'session_updated') {
+  if (type === 'session_created' || type === 'session_opened' || type === 'session_updated') {
     if (classId && sessionId) {
       router.push(`/praktikan/presensi?classId=${classId}&sessionId=${sessionId}` as any);
       return;

@@ -137,16 +137,27 @@ test('notifySessionUpdated sends cancelled and updated notifications', async () 
       '@react-native-firebase/firestore': mockFirestore,
     });
 
+    // Test createSession
+    await notifySessionUpdated({
+      classId: 'class-1',
+      sessionId: 'session-2',
+      action: 'createSession',
+    });
+    assert.equal(sentPayloads.length, 1);
+    assert.equal(sentPayloads[0][0].title, 'Sesi Praktikum Baru');
+    assert.match(sentPayloads[0][0].body, /Modul 3 Sorting/);
+    assert.equal(sentPayloads[0][0].data.type, 'session_created');
+
     // Test updateSession
     await notifySessionUpdated({
       classId: 'class-1',
       sessionId: 'session-2',
       action: 'updateSession',
     });
-    assert.equal(sentPayloads.length, 1);
-    assert.equal(sentPayloads[0][0].title, 'Jadwal Praktikum Diperbarui');
-    assert.match(sentPayloads[0][0].body, /Modul 3 Sorting/);
-    assert.equal(sentPayloads[0][0].data.type, 'session_updated');
+    assert.equal(sentPayloads.length, 2);
+    assert.equal(sentPayloads[1][0].title, 'Jadwal Praktikum Diperbarui');
+    assert.match(sentPayloads[1][0].body, /Modul 3 Sorting/);
+    assert.equal(sentPayloads[1][0].data.type, 'session_updated');
 
     // Test cancelSession
     await notifySessionUpdated({
@@ -154,11 +165,11 @@ test('notifySessionUpdated sends cancelled and updated notifications', async () 
       sessionId: 'session-2',
       action: 'cancelSession',
     });
-    assert.equal(sentPayloads.length, 2);
-    assert.equal(sentPayloads[1][0].title, 'Sesi Praktikum Dibatalkan');
-    assert.match(sentPayloads[1][0].body, /dibatalkan/);
-    assert.equal(sentPayloads[1][0].data.type, 'session_cancelled');
-    assert.equal(sentPayloads[1][0].data.url, '/jadwal');
+    assert.equal(sentPayloads.length, 3);
+    assert.equal(sentPayloads[2][0].title, 'Sesi Praktikum Dibatalkan');
+    assert.match(sentPayloads[2][0].body, /dibatalkan/);
+    assert.equal(sentPayloads[2][0].data.type, 'session_cancelled');
+    assert.equal(sentPayloads[2][0].data.url, '/jadwal');
   } finally {
     globalThis.fetch = originalFetch;
   }

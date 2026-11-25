@@ -51,6 +51,17 @@ export async function mutate<T = unknown>(
   // Jalankan trigger push notification setelah mutasi berhasil (non-blocking).
   try {
     if (
+      action === 'createSession' &&
+      typeof fields.classId === 'string' &&
+      result &&
+      typeof (result as { id?: unknown }).id === 'string'
+    ) {
+      void notifySessionUpdated({
+        classId: fields.classId,
+        sessionId: (result as { id: string }).id,
+        action: 'createSession',
+      }).catch((err) => console.warn('Trigger notification createSession error:', err));
+    } else if (
       action === 'openSession' &&
       typeof fields.classId === 'string' &&
       typeof fields.sessionId === 'string'
