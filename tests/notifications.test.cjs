@@ -47,7 +47,7 @@ test('notifySessionOpened fetches active students and sends session opened push 
   try {
     const mockDb = {};
     const mockStore = {
-      'classes/class-1': { name: 'Basis Data A' },
+      'classes/class-1': { name: 'Basis Data A', assistantUid: 'assistant-1' },
       'classes/class-1/sessions/session-1': { moduleTitle: 'Modul 2 SQL Query' },
       'pushTokens/student-1': { enabled: true, token: 'ExponentPushToken[student-1-token]' },
       'pushTokens/student-2': { enabled: false, token: 'ExponentPushToken[student-2-disabled]' },
@@ -60,10 +60,14 @@ test('notifySessionOpened fetches active students and sends session opened push 
       { data: () => ({ studentUid: 'student-3', status: 'active' }) },
     ];
 
+    const whereCalls = [];
     const mockFirestore = {
       collection: (_db, col) => col,
       query: (col, ..._filters) => col,
-      where: () => ({}),
+      where: (field, op, value) => {
+        whereCalls.push([field, op, value]);
+        return {};
+      },
       getDocs: async () => mockEnrollments,
       doc: (_db, ...parts) => parts.join('/'),
       getDoc: async (path) => ({
@@ -74,11 +78,17 @@ test('notifySessionOpened fetches active students and sends session opened push 
 
     const { notifySessionOpened } = loadTypeScript('src/lib/notification-triggers.ts', {
       './notifications': { NOTIFICATION_CHANNEL_ID: 'labsync-alerts' },
-      '@/lib/firebase': { db: mockDb },
+      '@/lib/firebase': { db: mockDb, auth: { currentUser: { uid: 'assistant-1' } } },
       '@react-native-firebase/firestore': mockFirestore,
     });
 
     await notifySessionOpened({ classId: 'class-1', sessionId: 'session-1' });
+
+    assert.deepEqual(whereCalls, [
+      ['assistantUid', '==', 'assistant-1'],
+      ['classId', '==', 'class-1'],
+      ['status', '==', 'active'],
+    ]);
 
     assert.equal(sentPayloads.length, 1);
     const batch = sentPayloads[0];

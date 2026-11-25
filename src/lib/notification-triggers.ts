@@ -52,20 +52,25 @@ export async function sendExpoPushNotifications(messages: ExpoPushMessage[]): Pr
 /**
  * Mengambil seluruh push token aktif milik praktikan yang terdaftar pada kelas tertentu.
  */
-async function getActiveStudentPushTokens(classId: string): Promise<string[]> {
+async function getActiveStudentPushTokens(
+  classId: string,
+  assistantUid?: unknown,
+): Promise<string[]> {
   try {
-    const { db } = await import('@/lib/firebase');
+    const { auth, db } = await import('@/lib/firebase');
     const { collection, getDocs, query, where, doc, getDoc } = await import(
       '@react-native-firebase/firestore'
     );
 
-    const enrollmentsSnap = await getDocs(
-      query(
-        collection(db, 'enrollments'),
-        where('classId', '==', classId),
-        where('status', '==', 'active'),
-      ),
-    );
+    const ownerUid = typeof assistantUid === 'string' ? assistantUid : auth?.currentUser?.uid;
+    // Wajib menyertakan filter assistantUid agar query lolos aturan keamanan enrollments di firestore.rules.
+    const filters = [
+      ...(ownerUid ? [where('assistantUid', '==', ownerUid)] : []),
+      where('classId', '==', classId),
+      where('status', '==', 'active'),
+    ];
+
+    const enrollmentsSnap = await getDocs(query(collection(db, 'enrollments'), ...filters));
 
     const studentUids: string[] = [];
     enrollmentsSnap.forEach((d) => {
@@ -103,6 +108,8 @@ async function getActiveStudentPushTokens(classId: string): Promise<string[]> {
 
 /**
  * Trigger 1: Notifikasi saat sesi praktikum dibuka (openSession).
+ * Memakai auth.currentUser.uid langsung (asisten yang membuka sesi pasti masih login)
+ * agar tidak perlu membaca classData dua kali dan menghindari race condition.
  */
 export async function notifySessionOpened(params: {
   classId: string;
@@ -110,8 +117,13 @@ export async function notifySessionOpened(params: {
 }): Promise<void> {
   const { classId, sessionId } = params;
   try {
-    const { db } = await import('@/lib/firebase');
+    const { auth, db } = await import('@/lib/firebase');
     const { doc, getDoc } = await import('@react-native-firebase/firestore');
+
+    // Baca sesi dan kelas secara paralel; gunakan currentUser.uid untuk filter
+    // enrollments agar query lolos security rules tanpa baca classData dulu.
+    const assistantUid = auth?.currentUser?.uid;
+    if (!assistantUid) return;
 
     const [classSnap, sessionSnap] = await Promise.all([
       getDoc(doc(db, 'classes', classId)),
@@ -122,7 +134,7 @@ export async function notifySessionOpened(params: {
     const sessionData = sessionSnap.data();
     if (!classData || !sessionData) return;
 
-    const tokens = await getActiveStudentPushTokens(classId);
+    const tokens = await getActiveStudentPushTokens(classId, assistantUid);
     if (tokens.length === 0) return;
 
     const moduleTitle = sessionData.moduleTitle ?? 'Praktikum';
@@ -173,7 +185,7 @@ export async function notifySessionUpdated(params: {
     const sessionData = sessionSnap.data();
     if (!classData || !sessionData) return;
 
-    const tokens = await getActiveStudentPushTokens(classId);
+    const tokens = await getActiveStudentPushTokens(classId, classData.assistantUid);
     if (tokens.length === 0) return;
 
     const moduleTitle = sessionData.moduleTitle ?? 'Praktikum';
